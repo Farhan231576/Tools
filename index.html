@@ -1,546 +1,517 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id" data-bs-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Undian Spin Wheel</title>
-  <!-- Bootstrap 5.3 -->
+  <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    :root {
-      --brand: #6c5ce7;
-      --brand-2: #00b894;
-      --ring: 420px; /* diameter */
-    }
-    body { min-height: 100vh; }
-
-    .app-wrap { max-width: 1100px; margin: 24px auto; }
-
-    .wheel-wrap {
-      position: relative;
-      width: var(--ring);
-      height: var(--ring);
-      margin-inline: auto;
-    }
-    canvas#wheel { width: 100%; height: 100%; }
-
-    /* Pointer arrow that sits above the spinning canvas, centered */
-    .pointer {
-      position: absolute;
-      left: 50%; top: 50%;
-      transform: translate(-50%, -50%);
-      width: 120px; height: 120px;
-      pointer-events: none;
-      z-index: 5;
-      filter: drop-shadow(0 4px 8px rgba(0,0,0,.25));
+    :root{
+      --rn-bg: var(--bs-body-bg);
+      --rn-card: var(--bs-body-bg);
+      --rn-border: var(--bs-border-color);
+      --rn-text: var(--bs-body-color);
+      --rn-accent: #6f42c1; /* purple */
+      --rn-win: #16a34a; /* green */
+      --rn-lose: #ef4444; /* red */
     }
 
-    .controls-sticky { position: sticky; top: 16px; }
+    body{ background: var(--rn-bg); }
 
-    .winner-badge { font-weight: 700; }
-
-    /* Confetti canvas overlay */
-    #confetti {
-      position: fixed; inset: 0; pointer-events: none; z-index: 2000;
+    .rn-card{
+      background: var(--rn-card);
+      border: 1px solid var(--rn-border);
+      border-radius: 1rem;
+      box-shadow: 0 .25rem 1rem rgba(0,0,0,.06);
     }
 
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .wheel-wrap{ position: relative; width: 520px; max-width: 100%; margin-inline: auto; }
+    canvas#wheel{ width: 100%; height: auto; aspect-ratio: 1/1; display: block; }
 
-    .brand-gradient {
-      background: linear-gradient(135deg, var(--brand), var(--brand-2));
-      -webkit-background-clip: text; background-clip: text; color: transparent;
+    /* center hub with pointer */
+    .hub{
+      position: absolute; inset: 0; display: grid; place-items: center; pointer-events:none;
+    }
+    .hub .core{
+      width: 120px; height: 120px; border-radius: 999px; background: var(--rn-card); border: 6px solid var(--rn-border);
+      box-shadow: inset 0 2px 8px rgba(0,0,0,.08), 0 4px 10px rgba(0,0,0,.06);
+      position: relative; display:grid; place-items:center; font-weight: 800; color: var(--rn-text);
+    }
+    .hub .pointer{ /* small triangle pointing up */
+      position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+      width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 18px solid var(--rn-accent);
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.25));
     }
 
-    .legend-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; margin-right: 8px; vertical-align: middle; }
+    /* top fixed label to show current angle */
+    .pointer-top{ position:absolute; top:-18px; left:50%; transform:translateX(-50%); width:0; height:0;
+      border-left: 18px solid transparent; border-right: 18px solid transparent; border-bottom: 28px solid var(--rn-accent);
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,.25));
+    }
+
+    .legend-swatch{ inline-size: 1.25rem; block-size: 1.25rem; border-radius: .375rem; border:1px solid #0001; display:inline-block; margin-right:.5rem }
+
+    /* winner overlay */
+    .winner-overlay{
+      position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; place-items: center; z-index: 1000;
+      backdrop-filter: blur(1px);
+    }
+    .winner-card{ max-width: 680px; margin: 1rem; }
+
+    /* textarea monospace */
+    textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    /* list chips */
+    .chip{ display:inline-flex; align-items:center; gap:.5rem; border:1px solid var(--rn-border); padding:.25rem .5rem; border-radius:999px; margin:.125rem; }
+
+    .strike{ text-decoration: line-through; opacity:.6 }
   </style>
 </head>
-<body class="bg-body">
-  <canvas id="confetti"></canvas>
-
-  <div class="app-wrap container">
-    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3 gap-3">
-      <h1 class="h3 m-0 brand-gradient">Undian Spin Wheel</h1>
-      <div class="d-flex gap-2">
-        <button id="toggleTheme" class="btn btn-outline-secondary btn-sm" type="button" title="Light/Dark">
-          <span class="theme-label">Dark</span> mode
-        </button>
-        <button id="resetBtn" class="btn btn-outline-danger btn-sm" type="button">Reset</button>
+<body>
+<div class="container py-4 py-md-5">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 m-0">🎡 Undian Spin Wheel</h1>
+    <div class="d-flex gap-2 align-items-center">
+      <div class="form-check form-switch m-0">
+        <input class="form-check-input" type="checkbox" role="switch" id="modeToggle">
+        <label class="form-check-label" for="modeToggle">Dark Mode</label>
       </div>
+      <button class="btn btn-outline-secondary btn-sm" id="resetBtn">Reset</button>
     </div>
-
-    <div class="row g-4">
-      <!-- Left: Inputs -->
-      <div class="col-lg-5">
-        <div class="card controls-sticky">
-          <div class="card-body">
-            <h5 class="card-title">Peserta</h5>
-            <p class="text-body-secondary small">Copy–paste, satu nama per baris.</p>
-            <textarea id="participantsInput" class="form-control mono" rows="7"></textarea>
-
-            <hr class="my-4" />
-
-            <h5 class="card-title">Hadiah</h5>
-            <p class="text-body-secondary small">Bisa tulis <code>Nama x Jumlah</code> <em>atau</em> tulis berulang per baris.</p>
-            <textarea id="prizesInput" class="form-control mono" rows="7"></textarea>
-
-            <div class="d-grid gap-2 mt-3">
-              <button id="applyBtn" class="btn btn-primary">Terapkan Data</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right: Wheel & status -->
-      <div class="col-lg-7">
-        <div class="card">
-          <div class="card-body">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <div>
-                <div class="text-body-secondary small">Giliran</div>
-                <div class="h5 m-0" id="currentPlayer">—</div>
-              </div>
-              <div class="text-end">
-                <div class="text-body-secondary small">Sisa Hadiah</div>
-                <div class="h5 m-0"><span id="remainingPrizes">0</span></div>
-              </div>
-            </div>
-
-            <div class="wheel-wrap my-3">
-              <canvas id="wheel" width="840" height="840" aria-label="Roda Undian"></canvas>
-              <!-- Centered pointer (does not rotate) -->
-              <svg class="pointer" viewBox="0 0 120 120" aria-hidden="true">
-                <defs>
-                  <radialGradient id="pinGrad" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stop-color="#fff"/>
-                    <stop offset="100%" stop-color="#ddd"/>
-                  </radialGradient>
-                </defs>
-                <!-- Outer circle badge -->
-                <circle cx="60" cy="60" r="34" fill="url(#pinGrad)" stroke="var(--bs-border-color)"/>
-                <!-- Up arrow from center -->
-                <path d="M60 18 L48 48 L72 48 Z" fill="var(--brand)"/>
-                <!-- Dot -->
-                <circle cx="60" cy="60" r="6" fill="var(--brand-2)"/>
-              </svg>
-            </div>
-
-            <div class="d-grid gap-2">
-              <button id="spinBtn" class="btn btn-success btn-lg" disabled>SPIN</button>
-            </div>
-
-            <div class="mt-4">
-              <h6 class="mb-2">Legenda Warna</h6>
-              <div id="legend" class="d-flex flex-wrap gap-3"></div>
-            </div>
-
-            <hr class="my-4" />
-
-            <h5 class="mb-3">Pemenang</h5>
-            <div class="table-responsive">
-              <table class="table align-middle">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Peserta</th>
-                    <th>Hadiah</th>
-                  </tr>
-                </thead>
-                <tbody id="winnersBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <footer class="text-center text-body-secondary small my-4">By ChatGPT • Bootstrap 5 • Canvas API</footer>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-    // -----------------------------
-    // Helpers
-    // -----------------------------
-    const $ = sel => document.querySelector(sel);
-    const h = (tag, props = {}, ...kids) => {
-      const el = document.createElement(tag);
-      Object.entries(props).forEach(([k,v]) => {
-        if (k === 'class') el.className = v; else if (k === 'style') Object.assign(el.style, v); else el.setAttribute(k, v);
-      });
-      kids.flat().forEach(k => el.append(k.nodeType ? k : document.createTextNode(k)));
-      return el;
-    };
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <div class="rn-card p-3 p-md-4 h-100">
+        <h2 class="h5 mb-3">🎁 Hadiah & 🧑‍🤝‍🧑 Peserta</h2>
+        <div class="mb-3">
+          <label class="form-label">Daftar Hadiah (1 per baris). Format fleksibel:
+            <code>Nama xJumlah</code> atau <code>Nama, Jumlah</code> atau ketik berulang per baris.</label>
+          <textarea id="prizeInput" class="form-control" rows="6">Motor x1
+Kulkas x1
+Rumah x2
+TV x5
+Lemari x1</textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Daftar Peserta (1 per baris)</label>
+          <textarea id="peopleInput" class="form-control" rows="6">Andi
+Budi
+Citra
+Dewi
+Eko
+Fani
+Gilang
+Hana
+Indra
+Joko</textarea>
+        </div>
+        <div class="row g-3 align-items-end">
+          <div class="col-6">
+            <label class="form-label">Kecepatan / Durasi Putar (detik)</label>
+            <input type="range" id="speedRange" min="2" max="10" step="1" value="5" class="form-range">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Pilih Peserta (opsional)</label>
+            <select id="personSelect" class="form-select">
+              <option value="__auto__" selected>Acak Otomatis</option>
+            </select>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button id="applyBtn" class="btn btn-primary">Terapkan Perubahan</button>
+          <button id="spinBtn" class="btn btn-success flex-fill">🎲 Putar!</button>
+        </div>
 
-    // Deterministic color based on text label (stable before/after spin)
-    function colorFor(label){
-      let hash = 0;
-      for (let i=0; i<label.length; i++) hash = (hash*31 + label.charCodeAt(i)) >>> 0;
-      const h = hash % 360;
-      const s = 65; // saturation
-      const l = 55; // lightness
-      return `hsl(${h} ${s}% ${l}%)`;
+        <hr class="my-4">
+
+        <div>
+          <h3 class="h6">Status:</h3>
+          <div id="statusArea" class="small text-secondary">Siap.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="rn-card p-3 p-md-4 h-100">
+        <div class="wheel-wrap">
+          <div class="pointer-top" aria-hidden="true"></div>
+          <canvas id="wheel" width="900" height="900"></canvas>
+          <div class="hub" aria-hidden="true">
+            <div class="core">
+              <div class="pointer"></div>
+              <div>SPIN</div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3" id="legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-1">
+    <div class="col-lg-6">
+      <div class="rn-card p-3 p-md-4">
+        <h2 class="h5">Pemenang</h2>
+        <div class="table-responsive">
+          <table class="table align-middle" id="winnerTable">
+            <thead>
+              <tr><th>#</th><th>Peserta</th><th>Hadiah</th><th>Waktu</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="rn-card p-3 p-md-4">
+        <h2 class="h5">Tersisa</h2>
+        <div class="mb-2"><strong>Peserta:</strong> <span id="remPeople"></span></div>
+        <div><strong>Hadiah:</strong> <span id="remPrizes"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Winner Overlay -->
+<div class="winner-overlay" id="winnerOverlay" role="dialog" aria-modal="true">
+  <div class="winner-card card text-center">
+    <div class="card-body p-4">
+      <div class="display-6 mb-3">🎉 Selamat!</div>
+      <div class="fs-4 fw-bold" id="winnerName">Nama</div>
+      <div class="fs-5 mt-1">memenangkan</div>
+      <div class="fs-3 fw-bold text-success" id="winnerPrize">Hadiah</div>
+      <div class="mt-4 d-flex gap-2 justify-content-center">
+        <button class="btn btn-success" id="overlayOkBtn">Oke</button>
+        <button class="btn btn-outline-secondary" id="overlayCopyBtn">Copy Teks</button>
+      </div>
+    </div>
+  </div>
+  <canvas id="confettiCanvas" style="position:fixed; inset:0; pointer-events:none;"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function(){
+  const $ = (sel, parent=document) => parent.querySelector(sel);
+  const $$ = (sel, parent=document) => Array.from(parent.querySelectorAll(sel));
+
+  // Elements
+  const wheel = $('#wheel');
+  const ctx = wheel.getContext('2d');
+  const legend = $('#legend');
+  const prizeInput = $('#prizeInput');
+  const peopleInput = $('#peopleInput');
+  const spinBtn = $('#spinBtn');
+  const applyBtn = $('#applyBtn');
+  const modeToggle = $('#modeToggle');
+  const personSelect = $('#personSelect');
+  const statusArea = $('#statusArea');
+  const speedRange = $('#speedRange');
+  const resetBtn = $('#resetBtn');
+
+  // Overlay
+  const overlay = $('#winnerOverlay');
+  const confettiCanvas = $('#confettiCanvas');
+  const overlayOkBtn = $('#overlayOkBtn');
+  const overlayCopyBtn = $('#overlayCopyBtn');
+  const winnerNameEl = $('#winnerName');
+  const winnerPrizeEl = $('#winnerPrize');
+
+  // Tables and chips
+  const winnerTableBody = $('#winnerTable tbody');
+  const remPeople = $('#remPeople');
+  const remPrizes = $('#remPrizes');
+
+  // Data state
+  let participants = [];
+  let remainingParticipants = [];
+  let prizes = []; // array of prize items (expanded by quantity)
+  let remainingPrizes = [];
+  let colorMap = new Map(); // prizeName -> color
+  let rotation = 0; // radians
+  let spinning = false;
+  let winners = [];
+
+  // Fixed color palette by prize name (case-insensitive). Ensures consistency.
+  const FIXED_COLORS = new Map([
+    ['kulkas', '#ef4444'], // red as requested
+    ['motor', '#0ea5e9'],
+    ['rumah', '#22c55e'],
+    ['tv',    '#3b82f6'],
+    ['lemari','#a855f7'],
+  ]);
+
+  function hashColor(name){
+    // deterministic pastel if not in FIXED_COLORS
+    let h = 0; const s = 65, l = 55;
+    const str = name.toLowerCase();
+    for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) >>> 0; }
+    const hue = h % 360; return `hsl(${hue} ${s}% ${l}%)`;
+  }
+
+  function parsePrizes(text){
+    const lines = text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+    const expanded = [];
+    const compressed = new Map(); // name -> count
+    for(const line of lines){
+      // Accept: "Nama xN" or "Nama, N" or repeated lines
+      let m = line.match(/^(.+?)(?:\s*[xX,]\s*(\d+))?$/);
+      if(!m){ continue; }
+      const name = m[1].trim();
+      const qty = m[2] ? Math.max(1, parseInt(m[2],10)) : 1;
+      compressed.set(name, (compressed.get(name)||0) + qty);
     }
+    for(const [name, qty] of compressed){ for(let i=0;i<qty;i++) expanded.push({name}); }
+    return {expanded, compressed};
+  }
 
-    // Parse textarea lines -> array of strings (non-empty)
-    function parseLines(txt){
-      return txt.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  function parsePeople(text){
+    return text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  }
+
+  function rebuildColorMap(){
+    colorMap.clear();
+    const names = Array.from(new Set(remainingPrizes.map(p=>p.name)));
+    for(const n of names){
+      const fixed = FIXED_COLORS.get(n.toLowerCase());
+      colorMap.set(n, fixed || hashColor(n));
     }
+  }
 
-    // Parse prizes: supports "Nama x N" or repeated lines
-    function expandPrizes(lines){
-      const items = [];
-      lines.forEach(line=>{
-        const m = line.match(/^(.*?)(?:\s*[xX]\s*(\d+))\s*$/);
-        if (m){
-          const name = m[1].trim();
-          const n = Math.max(1, parseInt(m[2],10)||1);
-          for (let i=0;i<n;i++) items.push(name);
-        } else if (line){
-          items.push(line);
-        }
-      });
-      return items;
-    }
+  function drawWheel(){
+    const W = wheel.width, H = wheel.height; const cx=W/2, cy=H/2; const r = Math.min(cx,cy) - 16;
+    ctx.clearRect(0,0,W,H);
 
-    // -----------------------------
-    // State
-    // -----------------------------
-    const state = {
-      participants: [],   // queue
-      prizesPool: [],     // array of prize names (expanded)
-      winners: [],        // [{name, prize}]
-      angle: 0,           // current wheel rotation (radians)
-      spinning: false,
-    };
+    const N = remainingPrizes.length || 1;
+    const arc = 2*Math.PI/N;
 
-    // -----------------------------
-    // Canvas Draw
-    // -----------------------------
-    const wheel = $('#wheel');
-    const ctx = wheel.getContext('2d');
-    const R = wheel.width/2; // radius
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(rotation);
 
-    function drawWheel(){
-      ctx.clearRect(0,0,wheel.width,wheel.height);
-      const { prizesPool, angle } = state;
-      const n = prizesPool.length;
+    for(let i=0;i<N;i++){
+      const start = i*arc; const end = start+arc;
+      const prize = remainingPrizes[i] || {name:'—'};
+      const color = colorMap.get(prize.name) || '#e5e7eb';
 
-      // Outer shadow ring
-      ctx.save();
-      ctx.translate(R, R);
-      ctx.rotate(angle);
-
-      if (n === 0){
-        // Empty wheel
-        ctx.beginPath();
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bs-border-color').trim() || '#ddd';
-        ctx.arc(0,0,R-6,0,Math.PI*2);
-        ctx.fill();
-        ctx.fillStyle = '#999';
-        ctx.font = '700 40px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('Tidak ada hadiah',0,0);
-        ctx.restore();
-        return;
-      }
-
-      const slice = (Math.PI*2)/n;
-
-      // Slices
-      for (let i=0;i<n;i++){
-        const start = i*slice;
-        const end = start + slice;
-        const label = prizesPool[i];
-        const color = colorFor(label);
-
-        // sector
-        ctx.beginPath();
-        ctx.moveTo(0,0);
-        ctx.arc(0,0,R-10,start,end);
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.fill();
-
-        // border
-        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // text
-        ctx.save();
-        ctx.fillStyle = '#fff';
-        ctx.rotate(start + slice/2);
-        ctx.textAlign = 'right';
-        ctx.textBaseline = 'middle';
-        ctx.font = '600 32px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-        ctx.shadowColor = 'rgba(0,0,0,.25)';
-        ctx.shadowBlur = 4;
-        ctx.shadowOffsetY = 2;
-        ctx.fillText(label, R-30, 0);
-        ctx.restore();
-      }
-
-      // center hub
+      // sector
       ctx.beginPath();
-      ctx.fillStyle = '#fff';
-      ctx.arc(0,0,50,0,Math.PI*2);
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,r,start,end);
+      ctx.closePath();
+      ctx.fillStyle = color;
       ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(0,0,0,.1)';
-      ctx.stroke();
 
-      ctx.restore();
-
-      // top notch ring
-      ctx.save();
-      ctx.translate(R,R);
+      // divider line
       ctx.beginPath();
-      ctx.lineWidth = 10;
-      ctx.strokeStyle = 'rgba(0,0,0,.08)';
-      ctx.arc(0,0,R-5,0,Math.PI*2);
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,r,start,end);
+      ctx.strokeStyle = 'rgba(0,0,0,.15)';
+      ctx.lineWidth = 2;
       ctx.stroke();
+
+      // text
+      ctx.save();
+      ctx.fillStyle = '#111827'; // dark text on colors
+      ctx.rotate(start + arc/2);
+      ctx.textAlign='right';
+      ctx.font = 'bold 28px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+      ctx.fillText(prize.name, r-16, 10);
       ctx.restore();
     }
 
-    // -----------------------------
-    // Spin Logic
-    // -----------------------------
-    function spin(){
-      if (state.spinning) return;
-      if (state.participants.length === 0){
-        alert('Peserta sudah habis.');
-        return;
-      }
-      if (state.prizesPool.length === 0){
-        alert('Hadiah sudah habis.');
-        return;
-      }
+    // rim
+    ctx.beginPath();
+    ctx.arc(0,0,r+2,0,2*Math.PI);
+    ctx.lineWidth=6; ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.stroke();
 
-      const player = state.participants.shift();
-      updateCurrentPlayer();
+    ctx.restore();
+    buildLegend();
+  }
 
-      // pick a random index among current slices
-      const n = state.prizesPool.length;
-      const slice = (Math.PI*2)/n;
-      const index = Math.floor(Math.random()*n);
+  function buildLegend(){
+    const byName = {};
+    for(const p of remainingPrizes){ byName[p.name] = (byName[p.name]||0)+1; }
+    legend.innerHTML = Object.entries(byName).map(([name,count])=>{
+      const color = colorMap.get(name) || '#e5e7eb';
+      return `<span class="chip"><span class="legend-swatch" style="background:${color}"></span>${name} <span class="text-secondary">x${count}</span></span>`;
+    }).join('');
+  }
 
-      // angle where pointer (upwards, -90deg) meets center of selected slice
-      const targetCenter = -Math.PI/2 - (index*slice + slice/2);
-      const turns = 6 + Math.floor(Math.random()*4); // 6..9 full turns
-      // compute final absolute angle (relative to 0)
-      let finalAngle = targetCenter + turns*2*Math.PI;
+  function updateRem(){
+    remPeople.innerHTML = remainingParticipants.map(n=>`<span class="chip">${n}</span>`).join('') || '<span class="text-secondary">—</span>';
+    // compress prizes
+    const map = new Map();
+    for(const p of remainingPrizes){ map.set(p.name, (map.get(p.name)||0)+1); }
+    remPrizes.innerHTML = Array.from(map.entries()).map(([name,c])=>`<span class="chip"><span class="legend-swatch" style="background:${colorMap.get(name) || '#e5e7eb'}"></span>${name} x${c}</span>`).join('') || '<span class="text-secondary">—</span>';
+  }
 
-      // animate from current angle to finalAngle smoothly
-      const startAngle = state.angle;
-      const delta = normalizeAngle(finalAngle - startAngle);
-      const duration = 4200; // ms
-      const t0 = performance.now();
-      state.spinning = true;
-      $('#spinBtn').disabled = true;
+  function applyData(){
+    const {expanded, compressed} = parsePrizes(prizeInput.value);
+    const ppl = parsePeople(peopleInput.value);
+    prizes = expanded.slice();
+    remainingPrizes = expanded.slice();
+    participants = ppl.slice();
+    remainingParticipants = ppl.slice();
 
-      function easeOutCubic(x){ return 1 - Math.pow(1 - x, 3); }
+    // Populate person select
+    personSelect.innerHTML = `<option value="__auto__" selected>Acak Otomatis</option>` + remainingParticipants.map(n=>`<option value="${encodeURIComponent(n)}">${n}</option>`).join('');
 
-      function frame(t){
-        const p = Math.min(1, (t - t0)/duration);
-        const eased = easeOutCubic(p);
-        state.angle = startAngle + delta*eased;
-        drawWheel();
-        if (p < 1){ requestAnimationFrame(frame); }
-        else {
-          // lock to exact target center to avoid text jitter
-          state.angle = startAngle + delta;
-          drawWheel();
-          // resolve winner
-          const prize = state.prizesPool[index];
-          // remove that slice from pool
-          state.prizesPool.splice(index,1);
-          // record winner
-          state.winners.push({ name: player, prize });
-          renderWinners();
-          updateRemaining();
-          buildLegend();
-          confettiBurst();
-          // Sound pop via WebAudio
-          playChime();
-          // prepare next player
-          updateCurrentPlayer();
-          state.spinning = false;
-          $('#spinBtn').disabled = (state.participants.length===0 || state.prizesPool.length===0);
-        }
-      }
-      requestAnimationFrame(frame);
+    rebuildColorMap();
+    drawWheel();
+    updateRem();
+    winners = [];
+    winnerTableBody.innerHTML='';
+    setStatus('Data diterapkan. Siap diundi.');
+  }
+
+  function setStatus(msg){ statusArea.textContent = msg; }
+
+  function pickParticipant(){
+    const chosen = personSelect.value;
+    if(chosen && chosen !== '__auto__'){
+      const name = decodeURIComponent(chosen);
+      if(!remainingParticipants.includes(name)) return null;
+      return name;
     }
+    if(remainingParticipants.length === 0) return null;
+    const idx = Math.floor(Math.random()*remainingParticipants.length);
+    return remainingParticipants[idx];
+  }
 
-    function normalizeAngle(a){
-      // ensure positive around current orientation
-      const tau = Math.PI*2;
-      while (a < 0) a += tau;
-      while (a > tau*1000) a -= tau; // guard
-      return a;
-    }
+  function spin(){
+    if(spinning) return;
+    if(remainingParticipants.length === 0){ setStatus('Semua peserta sudah menang.'); return; }
+    if(remainingPrizes.length === 0){ setStatus('Hadiah habis.'); return; }
 
-    // -----------------------------
-    // Confetti (simple, lightweight)
-    // -----------------------------
-    const confettiCanvas = $('#confetti');
-    const cctx = confettiCanvas.getContext('2d');
-    function resizeConfetti(){ confettiCanvas.width = innerWidth; confettiCanvas.height = innerHeight; }
-    window.addEventListener('resize', resizeConfetti); resizeConfetti();
+    const participant = pickParticipant();
+    if(!participant){ setStatus('Peserta tidak valid.'); return; }
 
-    function confettiBurst(){
-      const pieces = Array.from({length: 160}, (_,i)=>({
-        x: innerWidth/2, y: innerHeight/4, // top-center-ish
-        vx: (Math.random()*2-1)*6,
-        vy: (Math.random()*-2-4),
-        g: 0.15 + Math.random()*0.2,
-        s: 6+Math.random()*6,
-        a: Math.random()*Math.PI*2,
-        va: (Math.random()*2-1)*0.2,
-        col: `hsl(${Math.random()*360} 80% 55%)`
-      }));
-      const tStart = performance.now();
-      const dur = 2200;
+    const N = remainingPrizes.length;
+    const arc = 2*Math.PI/N;
 
-      function tick(t){
-        const p = (t - tStart)/dur;
-        cctx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height);
-        pieces.forEach(o=>{
-          o.vy += o.g; o.x += o.vx; o.y += o.vy; o.a += o.va;
-          cctx.save();
-          cctx.translate(o.x, o.y);
-          cctx.rotate(o.a);
-          cctx.fillStyle = o.col;
-          cctx.fillRect(-o.s/2, -o.s/2, o.s, o.s);
-          cctx.restore();
-        });
-        if (p < 1) requestAnimationFrame(tick); else cctx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height);
-      }
-      requestAnimationFrame(tick);
-    }
+    // choose random prize index; the wheel will stop with pointer at that index
+    const targetIndex = Math.floor(Math.random()*N);
 
-    // Simple chime
-    function playChime(){
-      try {
-        const ac = new (window.AudioContext || window.webkitAudioContext)();
-        const o = ac.createOscillator();
-        const g = ac.createGain();
-        o.connect(g); g.connect(ac.destination);
-        o.type = 'triangle';
-        const now = ac.currentTime;
-        o.frequency.setValueAtTime(880, now);
-        o.frequency.exponentialRampToValueAtTime(440, now + 0.35);
-        g.gain.setValueAtTime(0.0001, now);
-        g.gain.exponentialRampToValueAtTime(0.4, now + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
-        o.start(now); o.stop(now + 0.5);
-      } catch(e) { /* ignore */ }
-    }
+    // compute target angle so that the middle of targetIndex aligns to pointer at angle 0 (top)
+    const targetAngle = (-(targetIndex*arc) - arc/2) % (2*Math.PI);
 
-    // -----------------------------
-    // UI renderers
-    // -----------------------------
-    function renderWinners(){
-      const tbody = $('#winnersBody');
-      tbody.innerHTML = '';
-      state.winners.forEach((w, i)=>{
-        const tr = h('tr',{},
-          h('td',{}, i+1),
-          h('td',{}, w.name),
-          h('td',{}, h('span',{class:'badge text-bg-primary winner-badge'}, w.prize))
-        );
-        tbody.appendChild(tr);
-      });
-    }
+    // add spins and easing
+    const spins = 6; // base spins
+    const duration = parseInt(speedRange.value,10) * 1000; // ms
+    const start = performance.now();
+    const initialRotation = rotation;
+    const finalRotation = targetAngle + spins*2*Math.PI; // many turns then land
 
-    function updateRemaining(){ $('#remainingPrizes').textContent = state.prizesPool.length; }
-    function updateCurrentPlayer(){ $('#currentPlayer').textContent = state.participants[0] || '—'; }
+    spinning = true;
 
-    function buildLegend(){
-      const legend = $('#legend');
-      legend.innerHTML='';
-      const uniq = [...new Set(state.prizesPool.concat(state.winners.map(w=>w.prize)))];
-      uniq.forEach(name=>{
-        legend.append(
-          h('span',{}, h('span',{class:'legend-swatch', style:{background: colorFor(name)}}), name)
-        );
-      });
-    }
+    function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
 
-    // -----------------------------
-    // Apply data & Reset
-    // -----------------------------
-    function applyData(){
-      const names = parseLines($('#participantsInput').value);
-      const prizeLines = parseLines($('#prizesInput').value);
-      const items = expandPrizes(prizeLines);
-
-      // guard: each participant can only win once; we just keep queue order
-      state.participants = names.slice(0);
-      state.prizesPool = items.slice(0);
-      state.winners = [];
-      state.angle = 0;
+    function frame(now){
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed/duration);
+      const eased = easeOutCubic(t);
+      rotation = initialRotation + (finalRotation - initialRotation) * eased;
       drawWheel();
-      renderWinners();
-      updateRemaining();
-      updateCurrentPlayer();
-      buildLegend();
-      $('#spinBtn').disabled = (state.participants.length===0 || state.prizesPool.length===0);
+      if(t < 1){ requestAnimationFrame(frame); }
+      else { spinning = false; onSpinEnd(participant, targetIndex); }
     }
 
-    function resetAll(){
-      seedDefaults();
-      applyData();
+    requestAnimationFrame(frame);
+    setStatus(`Memutar untuk ${participant}…`);
+  }
+
+  function onSpinEnd(participant, prizeIndex){
+    const prize = remainingPrizes[prizeIndex];
+
+    // Assign & remove from pools
+    winners.push({participant, prize: prize.name, at: new Date()});
+    remainingParticipants = remainingParticipants.filter(n=>n !== participant);
+    remainingPrizes.splice(prizeIndex, 1);
+
+    // Disable selected in dropdown
+    const opt = Array.from(personSelect.options).find(o=>decodeURIComponent(o.value)===participant);
+    if(opt) opt.disabled = true;
+
+    // Rebuild wheel colors remain same mapping
+    rebuildColorMap();
+    drawWheel();
+    updateRem();
+
+    // Add table row
+    const i = winners.length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i}</td><td>${participant}</td><td><span class="badge" style="background:${colorMap.get(prize.name)}">&nbsp;</span> ${prize.name}</td><td>${new Date().toLocaleString()}</td>`;
+    winnerTableBody.appendChild(tr);
+
+    // Overlay + confetti
+    winnerNameEl.textContent = participant;
+    winnerPrizeEl.textContent = prize.name;
+    overlay.style.display = 'grid';
+    fireConfetti();
+
+    setStatus(`${participant} memenangkan ${prize.name}.`);
+  }
+
+  // Confetti (no external lib)
+  let confettiTimer;
+  function fireConfetti(){
+    const c = confettiCanvas; const ctx2 = c.getContext('2d');
+    const W = c.width = window.innerWidth; const H = c.height = window.innerHeight;
+    const pieces = Array.from({length: 220}, ()=>({
+      x: Math.random()*W,
+      y: -20 - Math.random()*H,
+      w: 6+Math.random()*6,
+      h: 8+Math.random()*12,
+      vy: 2+Math.random()*4,
+      vx: (Math.random()-.5)*2,
+      rot: Math.random()*Math.PI,
+      vr: (Math.random()-.5)*0.2,
+      color: `hsl(${Math.floor(Math.random()*360)} 90% 60%)`
+    }));
+
+    cancelAnimationFrame(confettiTimer);
+
+    function loop(){
+      ctx2.clearRect(0,0,W,H);
+      for(const p of pieces){
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        if(p.y > H+20) { p.y = -20; p.x = Math.random()*W; }
+        ctx2.save();
+        ctx2.translate(p.x,p.y); ctx2.rotate(p.rot);
+        ctx2.fillStyle = p.color; ctx2.fillRect(-p.w/2,-p.h/2,p.w,p.h);
+        ctx2.restore();
+      }
+      confettiTimer = requestAnimationFrame(loop);
     }
+    loop();
+  }
 
-    // -----------------------------
-    // Theme toggle using data-bs-theme
-    // -----------------------------
-    function setTheme(mode){
-      document.documentElement.setAttribute('data-bs-theme', mode);
-      localStorage.setItem('theme', mode);
-      $('.theme-label').textContent = mode === 'light' ? 'Dark' : 'Light';
-    }
+  function stopConfetti(){ cancelAnimationFrame(confettiTimer); const ctx2 = confettiCanvas.getContext('2d'); ctx2.clearRect(0,0,confettiCanvas.width, confettiCanvas.height); }
 
-    function toggleTheme(){
-      const cur = document.documentElement.getAttribute('data-bs-theme') || 'light';
-      setTheme(cur === 'light' ? 'dark' : 'light');
-    }
+  // Events
+  applyBtn.addEventListener('click', applyData);
+  spinBtn.addEventListener('click', spin);
+  modeToggle.addEventListener('change', ()=>{
+    const html = document.documentElement;
+    html.setAttribute('data-bs-theme', modeToggle.checked ? 'dark' : 'light');
+  });
+  resetBtn.addEventListener('click', ()=>{ applyData(); winners=[]; winnerTableBody.innerHTML=''; setStatus('Direset.'); });
 
-    // -----------------------------
-    // Wiring
-    // -----------------------------
-    $('#applyBtn').addEventListener('click', applyData);
-    $('#spinBtn').addEventListener('click', spin);
-    $('#resetBtn').addEventListener('click', resetAll);
-    $('#toggleTheme').addEventListener('click', toggleTheme);
+  overlayOkBtn.addEventListener('click', ()=>{ overlay.style.display='none'; stopConfetti(); });
+  overlayCopyBtn.addEventListener('click', ()=>{
+    const text = `${winnerNameEl.textContent} memenangkan ${winnerPrizeEl.textContent}`;
+    navigator.clipboard.writeText(text);
+    overlayCopyBtn.textContent = 'Tersalin!';
+    setTimeout(()=> overlayCopyBtn.textContent='Copy Teks', 1200);
+  });
 
-    // -----------------------------
-    // Defaults
-    // -----------------------------
-    function seedDefaults(){
-      const defaultNames = [
-        'Andi','Budi','Citra','Dini','Eko','Fajar','Gita','Hani','Indra','Joko'
-      ].join('\n');
-      const defaultPrizes = [
-        'Motor x1',
-        'Kulkas x1',
-        'Rumah x2',
-        'TV x5',
-        'Lemari x1'
-      ].join('\n');
-      $('#participantsInput').value = defaultNames;
-      $('#prizesInput').value = defaultPrizes;
-    }
-
-    // boot
-    (function init(){
-      // restore theme
-      const saved = localStorage.getItem('theme');
-      setTheme(saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
-      seedDefaults();
-      applyData();
-    })();
-  </script>
+  // Initialize
+  applyData();
+  drawWheel();
+})();
+</script>
 </body>
 </html>
