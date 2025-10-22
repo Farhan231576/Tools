@@ -43,9 +43,12 @@
     .wheel-wrap{position:relative; display:grid; place-items:center}
     #wheelCanvas{max-width:100%; height:auto; filter: drop-shadow(0 12px 24px rgba(0,0,0,.08));}
     .pin{
-      position:absolute; inset:auto 0 50% 0; margin:auto; width:0; height:0; border-left:16px solid transparent; border-right:16px solid transparent; border-bottom:28px solid var(--seg-e);
-      transform: translateY(-8px);
-      filter: drop-shadow(0 2px 2px rgba(0,0,0,.2));
+      position:absolute; top:8px; left:50%; transform:translateX(-50%);
+      width:0; height:0;
+      border-left:16px solid transparent; border-right:16px solid transparent;
+      border-bottom:28px solid var(--seg-e); /* panah menghadap ke bawah, menunjuk segmen atas */
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,.25));
+      z-index:4;
     }
 
     .wheel-center{
@@ -61,6 +64,16 @@
     .btn-lg{font-weight:700}
 
     .table-results td, .table-results th{vertical-align:middle}
+  ===== Confetti (Efek meriah saat menang) ======== */
+    .confetti-wrap{position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:1081}
+    .confetti{position:absolute; width:10px; height:14px; opacity:0; animation:confetti-fall 1400ms ease-out forwards}
+    .confetti.round{border-radius:999px}
+    .confetti.tri{width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid currentColor}
+    @keyframes confetti-fall{0%{transform:translateY(-20vh) rotate(0deg); opacity:0} 10%{opacity:1} 100%{transform:translateY(110vh) rotate(720deg); opacity:0}}
+
+    /* Pop anim untuk badge tengah */
+    .pop{animation:pop-in 600ms cubic-bezier(.2,1,.2,1)}
+    @keyframes pop-in{0%{transform:scale(.6)} 60%{transform:scale(1.08)} 100%{transform:scale(1)}}
   </style>
 </head>
 <body class="bg-body-tertiary">
@@ -344,6 +357,11 @@
 
   function announceWin(name, prize){
     $('#toastBody').innerHTML = `<strong>${escapeHtml(name)}</strong> mendapatkan <span class="result-chip">${escapeHtml(prize)}</span> 🎉`;
+    celebrate();
+    centerEl.classList.remove('pop');
+    void centerEl.offsetWidth; // retrigger
+    centerEl.classList.add('pop');
+    if(navigator.vibrate){ try{ navigator.vibrate([60,40,60]); }catch{} }
     toast.show();
   }
 
@@ -439,6 +457,29 @@
     drawWheel();
   }
 
+  // ======= Celebration Effect =======
+  function celebrate(){
+    const colors = ['#f43f5e','#f59e0b','#10b981','#06b6d4','#6366f1','#a855f7','#ef4444','#22c55e'];
+    const wrap = document.createElement('div');
+    wrap.className = 'confetti-wrap';
+    const pieces = 120;
+    for(let i=0;i<pieces;i++){
+      const el = document.createElement('div');
+      const shape = Math.random()<0.2 ? 'tri' : (Math.random()<0.5 ? 'round' : '');
+      el.className = `confetti ${shape}`.trim();
+      el.style.left = (Math.random()*100)+'%';
+      el.style.top = (-10 - Math.random()*30)+'vh';
+      el.style.background = shape==='tri' ? 'transparent' : colors[i%colors.length];
+      el.style.color = colors[(i+3)%colors.length];
+      el.style.animationDelay = (Math.random()*200)+'ms';
+      el.style.transform = `translateY(${-20 - Math.random()*40}vh) rotate(${Math.random()*360}deg)`;
+      el.style.opacity = '0';
+      wrap.appendChild(el);
+    }
+    document.body.appendChild(wrap);
+    setTimeout(()=>wrap.remove(), 1600);
+  }
+
   // ======= Events =======
   $('#btnLoad').addEventListener('click', loadData);
   $('#btnSample').addEventListener('click', ()=>{fillSample();});
@@ -457,4 +498,3 @@
   </script>
 </body>
 </html>
-
