@@ -1,1 +1,460 @@
+<!DOCTYPE html>
+<html lang="id" data-bs-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Undian Spin Wheel</title>
+  <!-- Bootstrap 5.3 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root{
+      --wheel-bg: #ffffff;
+      --wheel-stroke: #111827;
+      --seg-a: #4f46e5;   /* indigo */
+      --seg-b: #06b6d4;   /* cyan */
+      --seg-c: #10b981;   /* emerald */
+      --seg-d: #f59e0b;   /* amber */
+      --seg-e: #ef4444;   /* red */
+      --text-strong: #0f172a;
+      --text-soft: #334155;
+      --panel: #ffffff;
+      --panel-border: #e5e7eb;
+    }
+    [data-bs-theme="dark"]{
+      --wheel-bg: #0b1220;
+      --wheel-stroke: #e5e7eb;
+      --text-strong: #e5e7eb;
+      --text-soft: #94a3b8;
+      --panel: #0b1220;
+      --panel-border: #1f2937;
+    }
+
+    body{font-feature-settings:"calt" on, "liga" on}
+
+    .brand{
+      font-weight:800; letter-spacing:.2px;
+      background: linear-gradient(90deg,var(--seg-a),var(--seg-b),var(--seg-c));
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+    }
+
+    .card{border-color:var(--panel-border)}
+    .form-control, .form-select{border-color:var(--panel-border)}
+
+    .wheel-wrap{position:relative; display:grid; place-items:center}
+    #wheelCanvas{max-width:100%; height:auto; filter: drop-shadow(0 12px 24px rgba(0,0,0,.08));}
+    .pin{
+      position:absolute; inset:auto 0 50% 0; margin:auto; width:0; height:0; border-left:16px solid transparent; border-right:16px solid transparent; border-bottom:28px solid var(--seg-e);
+      transform: translateY(-8px);
+      filter: drop-shadow(0 2px 2px rgba(0,0,0,.2));
+    }
+
+    .wheel-center{
+      position:absolute; width:86px; height:86px; border-radius:999px; background:var(--panel);
+      border:4px solid var(--panel-border); display:grid; place-items:center; font-weight:800; color:var(--text-strong)
+    }
+
+    .list-mini{min-height:130px}
+    .code-hint{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.85rem}
+
+    .result-chip{font-weight:700}
+
+    .btn-lg{font-weight:700}
+
+    .table-results td, .table-results th{vertical-align:middle}
+  </style>
+</head>
+<body class="bg-body-tertiary">
+  <div class="container py-4 py-md-5">
+    <header class="d-flex flex-wrap align-items-center gap-3 mb-4">
+      <div class="me-auto">
+        <h1 class="h3 mb-1 brand">Undian Spin Wheel</h1>
+        <p class="text-secondary mb-0">Bootstrap • Light/Dark • Setiap peserta & hadiah hanya bisa menang sekali</p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button id="btnTheme" class="btn btn-outline-secondary" type="button" title="Toggle Light/Dark">🌗 Mode</button>
+        <button id="btnResetAll" class="btn btn-outline-danger" type="button">Reset Semua</button>
+      </div>
+    </header>
+
+    <div class="row g-4">
+      <!-- Data Setup -->
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header bg-transparent"><strong>1) Data Undian</strong></div>
+          <div class="card-body">
+            <label class="form-label">Daftar Peserta <span class="text-secondary">(satu nama per baris)</span></label>
+            <textarea id="taParticipants" class="form-control list-mini" placeholder="contoh:\nAndi\nBudi\nCitra\nDewi\n…"></textarea>
+
+            <div class="mt-3">
+              <label class="form-label">Daftar Hadiah <span class="text-secondary">(satu item per baris)</span></label>
+              <textarea id="taPrizes" class="form-control list-mini" placeholder="Boleh tulis berulang atau pakai jumlah:\nMotor x1\nKulkas x1\nRumah x2\nTV x5\nLemari x1"></textarea>
+              <div class="form-text code-hint">Format jumlah didukung: <code>Nama xN</code>, <code>Nama * N</code>, atau <code>N x Nama</code>. Juga bisa tulis berulang.</div>
+            </div>
+
+            <div class="d-grid gap-2 mt-3">
+              <button id="btnLoad" class="btn btn-primary">Muat / Perbarui Data</button>
+              <button id="btnSample" class="btn btn-outline-primary">Isi Contoh 10 Peserta & 10 Hadiah</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wheel -->
+      <div class="col-lg-5">
+        <div class="card h-100">
+          <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
+            <strong>2) Putar Roda Hadiah</strong>
+            <span class="text-secondary" id="counterLeft">0 hadiah tersisa</span>
+          </div>
+          <div class="card-body">
+            <div class="wheel-wrap">
+              <canvas id="wheelCanvas" width="520" height="520" aria-label="Roda undian hadiah"></canvas>
+              <div class="pin" aria-hidden="true"></div>
+              <div class="wheel-center" id="wheelCenter">SPIN</div>
+            </div>
+            <div class="d-grid gap-2 mt-3">
+              <button id="btnSpin" class="btn btn-lg btn-success" disabled>🎯 Putar Sekarang</button>
+              <div class="d-flex gap-2">
+                <button id="btnUndo" class="btn btn-outline-secondary flex-fill" disabled>↩️ Undo</button>
+                <button id="btnExport" class="btn btn-outline-secondary flex-fill" disabled>⬇️ Export CSV</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="col-lg-3">
+        <div class="card h-100">
+          <div class="card-header bg-transparent"><strong>3) Hasil Undian</strong></div>
+          <div class="card-body">
+            <ol id="resultList" class="list-group list-group-numbered mb-3 small"></ol>
+            <table class="table table-sm table-striped align-middle table-results">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Pemenang</th>
+                  <th>Hadiah</th>
+                </tr>
+              </thead>
+              <tbody id="resultTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="position-fixed top-0 start-50 translate-middle-x p-3" style="z-index:1080">
+      <div id="toastWin" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body" id="toastBody">Berhasil!</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  // ======= State =======
+  const state = {
+    participants: [],
+    prizes: [],
+    results: [], // {winner, prize}
+    history: [], // stack for undo
+    spinning: false,
+    angle: 0,
+  };
+
+  // ======= Helpers =======
+  const $ = sel => document.querySelector(sel);
+  const taParticipants = $('#taParticipants');
+  const taPrizes = $('#taPrizes');
+  const wheel = $('#wheelCanvas');
+  const ctx = wheel.getContext('2d');
+  const centerEl = $('#wheelCenter');
+  const counterLeft = $('#counterLeft');
+  const resultList = $('#resultList');
+  const resultTable = $('#resultTable');
+  const toast = new bootstrap.Toast($('#toastWin'));
+
+  function saveLocal(){
+    localStorage.setItem('undian:data', JSON.stringify({
+      participants: taParticipants.value,
+      prizes: taPrizes.value,
+      theme: document.documentElement.getAttribute('data-bs-theme')
+    }));
+  }
+  function loadLocal(){
+    const raw = localStorage.getItem('undian:data');
+    if(!raw) return;
+    try{
+      const d = JSON.parse(raw);
+      if(d.participants) taParticipants.value = d.participants;
+      if(d.prizes) taPrizes.value = d.prizes;
+      if(d.theme) document.documentElement.setAttribute('data-bs-theme', d.theme);
+    }catch{}
+  }
+
+  function parseLines(text){
+    return text.split(/\n|\r/).map(s=>s.trim()).filter(Boolean);
+  }
+
+  function expandPrizes(lines){
+    // Accept formats: "Nama xN", "Nama * N", "N x Nama" | or repeated lines
+    const out = [];
+    for(const line of lines){
+      const s = line.replace(/\s{2,}/g,' ').trim();
+      if(!s) continue;
+      // Try pattern 1: Name xN or Name * N
+      let m = s.match(/^(.*?)[\s]*(?:x|\*)[\s]*([0-9]+)$/i);
+      if(m){
+        const name = m[1].trim();
+        const n = parseInt(m[2],10);
+        for(let i=0;i<n;i++) out.push(name);
+        continue;
+      }
+      // Pattern 2: N x Name
+      m = s.match(/^([0-9]+)[\s]*(?:x|\*)[\s]*(.*)$/i);
+      if(m){
+        const n = parseInt(m[1],10);
+        const name = m[2].trim();
+        for(let i=0;i<n;i++) out.push(name);
+        continue;
+      }
+      // else just one item
+      out.push(s);
+    }
+    return out;
+  }
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function syncUI(){
+    const left = state.prizes.length;
+    counterLeft.textContent = left+" hadiah tersisa";
+    $('#btnSpin').disabled = !(state.participants.length && state.prizes.length) || state.spinning;
+    $('#btnUndo').disabled = !state.history.length || state.spinning;
+    $('#btnExport').disabled = !state.results.length;
+    drawWheel();
+    renderResults();
+  }
+
+  // ======= Wheel Drawing =======
+  function drawWheel(){
+    const W = wheel.width, H = wheel.height; const cx = W/2, cy = H/2; const r = Math.min(cx,cy)-12;
+    ctx.clearRect(0,0,W,H);
+    const segs = state.prizes.length || 1;
+    const anglePer = (Math.PI*2)/segs;
+
+    const palette = ['--seg-a','--seg-b','--seg-c','--seg-d','--seg-e'];
+
+    for(let i=0;i<segs;i++){
+      const start = state.angle + i*anglePer;
+      const end = start + anglePer;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,start,end);
+      ctx.closePath();
+      const colorVar = palette[i % palette.length];
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(colorVar) || '#999';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wheel-stroke') || '#111';
+      ctx.stroke();
+
+      // Text
+      const mid = start + anglePer/2;
+      ctx.save();
+      ctx.translate(cx + Math.cos(mid)*(r*0.72), cy + Math.sin(mid)*(r*0.72));
+      ctx.rotate(mid + Math.PI/2);
+      ctx.fillStyle = '#fff';
+      ctx.font = '600 16px system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = state.prizes[i] ? truncate(state.prizes[i], 20) : '—';
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
+    }
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(cx,cy,r+6,0,Math.PI*2);
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wheel-stroke') || '#111';
+    ctx.stroke();
+  }
+
+  function truncate(s, n){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  // ======= Spin Logic =======
+  async function spin(){
+    if(state.spinning || !state.prizes.length || !state.participants.length) return;
+    state.spinning = true; syncUI();
+
+    // Choose target segment index (relative to current ordering)
+    const targetIdx = Math.floor(Math.random()*state.prizes.length);
+    const segs = state.prizes.length; const anglePer = (Math.PI*2)/segs;
+
+    // We want the target to land at pointer (up/top). Pointer is at -90deg (or -PI/2) direction.
+    // Current angle maps segment 0 center at angle: state.angle + anglePer/2
+    const targetAngle = (3*Math.PI/2) - (targetIdx*anglePer + anglePer/2); // where segment center should end
+
+    // Normalize current angle
+    let current = ((state.angle % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+
+    // Compute delta with extra spins
+    const extraSpins = 5 + Math.floor(Math.random()*3); // 5-7 spins
+    let delta = targetAngle - current + extraSpins*(Math.PI*2);
+
+    const duration = 4000 + Math.random()*1200; // 4.0-5.2s
+    const startTime = performance.now();
+
+    await new Promise(resolve => {
+      const tick = (now)=>{
+        const t = Math.min(1, (now-startTime)/duration);
+        // easeOutCubic
+        const eased = 1 - Math.pow(1-t, 3);
+        state.angle = current + delta*eased;
+        drawWheel();
+        if(t<1) requestAnimationFrame(tick); else resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+
+    const winnerPrize = state.prizes.splice(targetIdx,1)[0];
+    const pIdx = Math.floor(Math.random()*state.participants.length);
+    const winnerName = state.participants.splice(pIdx,1)[0];
+
+    const record = { winner: winnerName, prize: winnerPrize };
+    state.results.push(record);
+    state.history.push({ action:'assign', record });
+
+    announceWin(winnerName, winnerPrize);
+
+    state.spinning = false; syncUI();
+  }
+
+  function announceWin(name, prize){
+    $('#toastBody').innerHTML = `<strong>${escapeHtml(name)}</strong> mendapatkan <span class="result-chip">${escapeHtml(prize)}</span> 🎉`;
+    toast.show();
+  }
+
+  function escapeHtml(s){
+    return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+  }
+
+  // ======= Results UI =======
+  function renderResults(){
+    resultList.innerHTML = '';
+    resultTable.innerHTML = '';
+    state.results.forEach((r, i)=>{
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+      li.innerHTML = `<span>${escapeHtml(r.winner)}</span><span class="badge text-bg-primary">${escapeHtml(r.prize)}</span>`;
+      resultList.appendChild(li);
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(r.winner)}</td><td>${escapeHtml(r.prize)}</td>`;
+      resultTable.appendChild(tr);
+    });
+  }
+
+  function exportCSV(){
+    const rows = [['No','Pemenang','Hadiah'], ...state.results.map((r,i)=>[i+1, r.winner, r.prize])];
+    const csv = rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='hasil-undian.csv'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }
+
+  function undo(){
+    if(!state.history.length) return;
+    const last = state.history.pop();
+    if(last.action==='assign'){
+      // put back to pools (end of arrays is fine)
+      state.participants.push(last.record.winner);
+      state.prizes.push(last.record.prize);
+      // remove last result
+      state.results.pop();
+      // Adjust angle so wheel still valid
+      state.angle = 0;
+      syncUI();
+    }
+  }
+
+  function resetAll(){
+    if(!confirm('Reset semua data dan hasil?')) return;
+    state.participants=[]; state.prizes=[]; state.results=[]; state.history=[]; state.angle=0; state.spinning=false;
+    taParticipants.value=''; taPrizes.value=''; saveLocal(); syncUI();
+  }
+
+  // ======= Load Data =======
+  function loadData(){
+    const participants = parseLines(taParticipants.value);
+    const prizesRaw = parseLines(taPrizes.value);
+    const prizes = expandPrizes(prizesRaw);
+
+    // Rule: each participant can only win once; that's naturally enforced by removal on win.
+    // Shuffle to avoid bias on initial order
+    state.participants = shuffle(participants.slice());
+    state.prizes = prizes.slice();
+    state.results = [];
+    state.history = [];
+    state.angle = 0;
+
+    saveLocal();
+    syncUI();
+  }
+
+  function fillSample(){
+    taParticipants.value = [
+      'Andi','Budi','Citra','Dewi','Eka','Fajar','Gita','Hadi','Intan','Joko'
+    ].join('\n');
+    taPrizes.value = [
+      'Motor x1',
+      'Kulkas x1',
+      'Rumah x2',
+      'TV x5',
+      'Lemari x1'
+    ].join('\n');
+    saveLocal();
+  }
+
+  // ======= Theme =======
+  function toggleTheme(){
+    const root = document.documentElement;
+    const next = root.getAttribute('data-bs-theme')==='dark' ? 'light' : 'dark';
+    root.setAttribute('data-bs-theme', next);
+    saveLocal();
+    drawWheel();
+  }
+
+  // ======= Events =======
+  $('#btnLoad').addEventListener('click', loadData);
+  $('#btnSample').addEventListener('click', ()=>{fillSample();});
+  $('#btnSpin').addEventListener('click', spin);
+  $('#btnUndo').addEventListener('click', undo);
+  $('#btnExport').addEventListener('click', exportCSV);
+  $('#btnResetAll').addEventListener('click', resetAll);
+  $('#btnTheme').addEventListener('click', toggleTheme);
+  taParticipants.addEventListener('input', saveLocal);
+  taPrizes.addEventListener('input', saveLocal);
+
+  // ======= Init =======
+  loadLocal();
+  drawWheel();
+  syncUI();
+  </script>
+</body>
+</html>
 
