@@ -1,494 +1,687 @@
-<!doctype html>
-<html lang="id" data-bs-theme="light">
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Undian Spin Wheel</title>
-  <!-- Bootstrap 5.3 -->
+  <title>Undian Spin Wheel — Tanpa Backend (Bootstrap 5 + JS)</title>
+  <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <style>
-    :root { --accent: #6f6cfb; --accent-2:#22c55e; }
-    body { background: var(--bs-body-bg); }
-    .app-title { letter-spacing:.3px; }
-    .wheel-wrap { position:relative; display:grid; place-items:center; }
-    canvas#wheel { width: 420px; height: 420px; max-width: 80vw; max-height: 80vw; }
-    .center-pin {
-      position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+    :root{
+      --wheel-size: 520px; /* responsive fallback; will be scaled */
+      --card-radius: 16px;
+      --shadow: 0 10px 30px rgba(0,0,0,.08);
     }
-    .center-pin .arrow {
-      width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent;
-      border-bottom: 26px solid var(--accent); filter: drop-shadow(0 2px 3px rgba(0,0,0,.25));
-      transform: translateY(-6px);
+    html,body{height:100%;}
+    body{background:var(--bs-body-bg);}    
+    .app{min-height:100dvh; display:grid; grid-template-rows:auto 1fr auto;}
+
+    /* Header */
+    header{position:sticky; top:0; z-index:20; backdrop-filter:saturate(180%) blur(6px);}    
+    .brand{font-weight:700; letter-spacing:.3px;}
+
+    /* Layout main */
+    .main-grid{display:grid; gap:16px; grid-template-columns: 420px 1fr;}
+    @media (max-width: 1200px){ .main-grid{grid-template-columns: 1fr;} }
+
+    .card{border-radius:var(--card-radius); box-shadow:var(--shadow);}    
+    .card-header{font-weight:600;}
+
+    /* Wheel panel */
+    .wheel-wrap{display:flex; align-items:center; justify-content:center; padding:10px;}
+    .wheel-stage{position:relative; width:min(var(--wheel-size), 72vw); aspect-ratio:1/1;}
+    #wheelCanvas{position:absolute; inset:0; width:100%; height:100%;}
+    .pointer{position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;}
+    .pointer svg{width:64px; height:64px; filter:drop-shadow(0 6px 12px rgba(0,0,0,.25));}
+
+    /* Controls */
+    .controls .form-range{--bs-form-range-thumb-bg: var(--bs-primary);}    
+
+    /* Winners table */
+    .table-responsive{max-height:360px; overflow:auto;}
+
+    /* Offcanvas/accordion spacing */
+    .accordion-button{font-weight:600;}
+
+    /* Dark mode tweaks */
+    [data-theme="dark"] body{color-scheme:dark;}
+
+    /* Focus visible for a11y */
+    :focus-visible{outline: 3px solid var(--bs-warning); outline-offset:2px; border-radius:8px;}
+
+    /* Make sure 1366×768 fits without outer scroll (except history table) */
+    @media (min-width: 1200px){
+      .fit-viewport{max-height: calc(100dvh - 180px); overflow:auto;}
     }
-    .center-pin .hub { width:46px; height:46px; border-radius:50%; background:#fff; border:4px solid var(--accent);
-      position:absolute; display:grid; place-items:center; font-weight:800; font-size:.8rem; color:var(--accent) }
-    .wheel-shadow { filter: drop-shadow(0 8px 22px rgba(0,0,0,.2)); }
-    .controls .form-label small { opacity:.8 }
-    .badge-qty { font-variant-numeric: tabular-nums; }
-    .winner-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.55);
-      display: none; align-items: center; justify-content: center; z-index: 1100;
-    }
-    .winner-card { max-width: 640px; }
-    .legend-swatch { width: .9rem; height: .9rem; display:inline-block; border-radius:3px; margin-right:.4rem; border:1px solid rgba(0,0,0,.15)}
-    .btn-accent { background: var(--accent); color:#fff; border:0 }
-    .btn-accent:hover { filter: brightness(0.95) }
-    .spin-btn { font-weight:700; text-transform:uppercase; letter-spacing:.6px }
-    .list-group-item small { opacity:.8 }
+
+    /* Small helper badges */
+    .pill{border-radius:999px; padding:.2rem .6rem; font-size:.8rem;}
   </style>
 </head>
 <body>
-  <div class="container py-4 py-md-5">
-    <div class="d-flex align-items-center justify-content-between mb-4">
-      <h1 class="h3 app-title mb-0">🎯 Undian Spin Wheel</h1>
-      <div class="d-flex align-items-center gap-2">
-        <button id="toggleTheme" class="btn btn-outline-secondary btn-sm" type="button" title="Light/Dark">
-          <span class="d-none d-sm-inline">Mode</span> <span class="ms-1" id="themeIcon">🌙</span>
+<div class="app">
+  <!-- Topbar -->
+  <header class="border-bottom bg-body-tertiary">
+    <div class="container-xxl py-2 d-flex align-items-center gap-3 justify-content-between">
+      <div class="d-flex align-items-center gap-3">
+        <span class="brand h5 mb-0"><i class="bi bi-vinyl me-2"></i>Spin Wheel Undian</span>
+        <span class="text-body-secondary small">Tanpa backend • state tersimpan di browser</span>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <div class="form-check form-switch m-0" title="Konfeti">
+          <input class="form-check-input" type="checkbox" id="confettiToggle" checked>
+          <label class="form-check-label" for="confettiToggle"><i class="bi bi-stars"></i> Konfeti</label>
+        </div>
+        <div class="form-check form-switch m-0" title="Suara">
+          <input class="form-check-input" type="checkbox" id="soundToggle">
+          <label class="form-check-label" for="soundToggle"><i class="bi bi-volume-up"></i> Suara</label>
+        </div>
+        <button id="themeToggle" class="btn btn-outline-secondary btn-sm" aria-pressed="false">
+          <i class="bi bi-sun"></i> <span class="ms-1">Light</span>
         </button>
       </div>
     </div>
+  </header>
 
-    <div class="row g-4">
-      <!-- Left: Inputs -->
-      <div class="col-lg-4">
-        <div class="card shadow-sm">
-          <div class="card-body controls">
-            <h5 class="card-title">Data Peserta</h5>
-            <p class="text-secondary small mb-2">Tempel (copy–paste) satu nama per baris.</p>
-            <textarea id="taPeserta" class="form-control mb-3" rows="6" placeholder="cth:
-Andi
-Budi
-Clara
-…"></textarea>
-
-            <h5 class="card-title mt-3">Data Hadiah</h5>
-            <p class="text-secondary small mb-2">Satu baris per hadiah. Bisa pakai format "Nama xQty" atau "Nama,Qty". Contoh di bawah.</p>
-            <textarea id="taHadiah" class="form-control" rows="6" placeholder="cth:
-Motor x1
-Kulkas x1
-Rumah x2
-TV x5
-Lemari x1"></textarea>
-
-            <div class="d-grid gap-2 mt-3">
-              <button class="btn btn-accent" id="btnLoad">Muat Daftar</button>
-              <button class="btn btn-outline-danger" id="btnReset">Reset</button>
-            </div>
-
-            <hr class="my-4">
-
-            <label class="form-label">Peserta yang diundi <small>(otomatis hilang setelah menang)</small></label>
-            <div class="input-group mb-3">
-              <select id="selPeserta" class="form-select"></select>
-              <button class="btn btn-outline-secondary" id="btnRandPeserta" type="button">Acak</button>
-            </div>
-
-            <div class="row g-3">
-              <div class="col-6">
-                <label for="speed" class="form-label">Kecepatan <small>(deg/s)</small></label>
-                <input type="range" class="form-range" id="speed" min="500" max="2000" step="50" value="1200">
+  <!-- Main -->
+  <main class="container-xxl my-3 main-grid">
+    <!-- Left: Config / Import -->
+    <section class="fit-viewport">
+      <div class="accordion" id="configAcc">
+        <!-- Peserta -->
+        <div class="accordion-item card">
+          <h2 class="accordion-header" id="headPeserta">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#colPeserta" aria-expanded="true" aria-controls="colPeserta">
+              <i class="bi bi-people me-2"></i> Peserta
+            </button>
+          </h2>
+          <div id="colPeserta" class="accordion-collapse collapse show" aria-labelledby="headPeserta" data-bs-parent="#configAcc">
+            <div class="accordion-body">
+              <!-- Import row -->
+              <div class="row g-2 align-items-end">
+                <div class="col-12 col-lg-6">
+                  <label class="form-label">Impor Excel/CSV</label>
+                  <input id="filePeserta" type="file" accept=".xlsx,.csv" class="form-control" />
+                </div>
+                <div class="col-6 col-lg-3 d-grid">
+                  <button id="btnViewPeserta" class="btn btn-outline-primary"><i class="bi bi-table"></i> View Data</button>
+                </div>
+                <div class="col-6 col-lg-3 d-grid">
+                  <button id="btnClearPeserta" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Hapus</button>
+                </div>
               </div>
-              <div class="col-6">
-                <label for="duration" class="form-label">Durasi <small>(detik)</small></label>
-                <input type="range" class="form-range" id="duration" min="3" max="8" step="0.5" value="5">
+              <div class="mt-2">
+                <label class="form-label">Paste cepat (NPK,Nama,Department per baris)</label>
+                <textarea id="pastePeserta" class="form-control" rows="3" placeholder="1001,Budi Santoso,Finance\n1002,Siti Aminah,HR"></textarea>
+                <div class="d-flex gap-2 mt-2">
+                  <button id="btnParsePeserta" class="btn btn-secondary"><i class="bi bi-clipboard-check"></i> Parse</button>
+                  <button id="btnSamplePeserta" class="btn btn-outline-secondary"><i class="bi bi-download"></i> Unduh Contoh Peserta.xlsx</button>
+                </div>
               </div>
-            </div>
 
-            <div class="d-grid mt-3">
-              <button class="btn btn-accent spin-btn" id="btnSpin">SPIN</button>
+              <div id="wrapPesertaTable" class="mt-3" hidden>
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <div>
+                    <span class="pill bg-primary-subtle text-primary me-2"><span id="sumPeserta">0</span> peserta unik</span>
+                    <span class="pill bg-warning-subtle text-warning"><span id="dupPeserta">0</span> duplikat NPK ditolak</span>
+                  </div>
+                </div>
+                <div class="table-responsive border rounded p-1">
+                  <table class="table table-sm table-hover align-middle mb-0" id="tblPeserta">
+                    <thead class="table-light">
+                      <tr><th>NPK</th><th>Nama</th><th>Department</th><th>Status</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="card shadow-sm mt-4">
-          <div class="card-body">
-            <h5 class="card-title mb-3">Legenda Hadiah</h5>
-            <ul id="legend" class="list-group list-group-flush"></ul>
+        <!-- Hadiah -->
+        <div class="accordion-item card">
+          <h2 class="accordion-header" id="headHadiah">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#colHadiah" aria-expanded="false" aria-controls="colHadiah">
+              <i class="bi bi-gift me-2"></i> Hadiah
+            </button>
+          </h2>
+          <div id="colHadiah" class="accordion-collapse collapse" aria-labelledby="headHadiah" data-bs-parent="#configAcc">
+            <div class="accordion-body">
+              <div class="row g-2 align-items-end">
+                <div class="col-12 col-lg-6">
+                  <label class="form-label">Impor Excel/CSV</label>
+                  <input id="fileHadiah" type="file" accept=".xlsx,.csv" class="form-control" />
+                </div>
+                <div class="col-6 col-lg-3 d-grid">
+                  <button id="btnPreviewHadiah" class="btn btn-outline-primary"><i class="bi bi-eye"></i> Preview Hadiah</button>
+                </div>
+                <div class="col-6 col-lg-3 d-grid">
+                  <button id="btnClearHadiah" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Hapus</button>
+                </div>
+              </div>
+              <div class="mt-2">
+                <label class="form-label">Paste cepat (NamaHadiah,Jumlah,WarnaHex)</label>
+                <textarea id="pasteHadiah" class="form-control" rows="3" placeholder="Motor,1,#D81B60\nKulkas,1,#1E88E5\nRumah,2,#43A047\nTV,5,#FB8C00\nLemari,1,#8E24AA"></textarea>
+                <div class="d-flex gap-2 mt-2">
+                  <button id="btnParseHadiah" class="btn btn-secondary"><i class="bi bi-clipboard-check"></i> Parse</button>
+                  <button id="btnSampleHadiah" class="btn btn-outline-secondary"><i class="bi bi-download"></i> Unduh Contoh Hadiah.xlsx</button>
+                </div>
+              </div>
+
+              <div id="wrapHadiahSummary" class="mt-3" hidden>
+                <div class="pill bg-success-subtle text-success me-2">Total hadiah: <span id="totalHadiah">0</span></div>
+                <div class="pill bg-info-subtle text-info">Sisa hadiah: <span id="sisaHadiah">0</span></div>
+              </div>
+            </div>
           </div>
         </div>
 
+        <!-- Ekspor Hasil -->
+        <div class="accordion-item card">
+          <h2 class="accordion-header" id="headExport">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#colExport" aria-expanded="false" aria-controls="colExport">
+              <i class="bi bi-cloud-arrow-down me-2"></i> Hasil & Ekspor
+            </button>
+          </h2>
+          <div id="colExport" class="accordion-collapse collapse" aria-labelledby="headExport" data-bs-parent="#configAcc">
+            <div class="accordion-body">
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <button id="btnExportCSV" class="btn btn-outline-primary"><i class="bi bi-filetype-csv"></i> Export Winners (.csv)</button>
+                <button id="btnExportXLSX" class="btn btn-outline-success"><i class="bi bi-filetype-xls"></i> Export Winners (.xlsx)</button>
+                <button id="btnUndo" class="btn btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i> Undo terakhir</button>
+                <button id="btnResetAll" class="btn btn-outline-danger ms-auto"><i class="bi bi-trash3"></i> Reset semua</button>
+              </div>
+              <div class="table-responsive border rounded p-1">
+                <table class="table table-sm table-striped align-middle mb-0" id="tblWinners">
+                  <thead class="table-light">
+                    <tr><th>Waktu</th><th>Hadiah</th><th>Jumlah</th><th>Nama</th><th>NPK</th><th>Dept</th></tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Wheel & Controls -->
+    <section class="d-grid gap-3">
+      <div class="card">
+        <div class="card-header">Spin Wheel</div>
+        <div class="card-body wheel-wrap">
+          <div class="wheel-stage mx-auto" aria-live="polite">
+            <canvas id="wheelCanvas" width="1024" height="1024" aria-label="Roda undian"></canvas>
+            <div class="pointer" aria-hidden="true">
+              <!-- Pointer SVG -->
+              <svg viewBox="0 0 64 64" role="img" aria-label="Penunjuk">
+                <polygon points="32,6 44,32 20,32" fill="currentColor" class="text-danger"/>
+                <circle cx="32" cy="36" r="8" fill="currentColor" class="text-body"/>
+              </svg>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Right: Wheel & Winners -->
-      <div class="col-lg-8">
-        <div class="card shadow-sm mb-4">
-          <div class="card-body">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-              <h5 class="card-title mb-0">Roda Undian</h5>
-              <span class="badge text-bg-secondary" id="statusBadge">Siap</span>
+      <div class="card controls">
+        <div class="card-body">
+          <div class="row g-3 align-items-center">
+            <div class="col-12 col-md-6">
+              <label for="rangeSpeed" class="form-label">Durasi Spin (detik)</label>
+              <input type="range" class="form-range" min="2" max="10" step="0.5" id="rangeSpeed" value="4">
             </div>
-            <div class="wheel-wrap">
-              <canvas id="wheel" width="720" height="720" class="wheel-shadow" aria-label="Spin wheel"></canvas>
-              <div class="center-pin" aria-hidden="true">
-                <div class="hub">↑</div>
-                <div class="arrow"></div>
-              </div>
+            <div class="col-12 col-md-6 d-flex gap-2 justify-content-md-end">
+              <button id="btnSpin" class="btn btn-primary btn-lg"><i class="bi bi-arrow-repeat"></i> Spin</button>
+              <button id="btnInfo" class="btn btn-outline-secondary"><i class="bi bi-info-circle"></i> Info</button>
             </div>
           </div>
+          <div class="mt-3 small text-body-secondary" id="infoRealtime">—</div>
         </div>
+      </div>
+    </section>
+  </main>
 
-        <div class="row g-4">
-          <div class="col-md-6">
-            <div class="card shadow-sm h-100">
-              <div class="card-body">
-                <h5 class="card-title mb-3">Riwayat Pemenang</h5>
-                <ul id="winners" class="list-group list-group-flush"></ul>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="card shadow-sm h-100">
-              <div class="card-body">
-                <h5 class="card-title mb-3">Sisa Kuota Hadiah</h5>
-                <ul id="quota" class="list-group list-group-flush"></ul>
-              </div>
-            </div>
-          </div>
+  <!-- Footer -->
+  <footer class="border-top small text-center text-body-secondary py-3">
+    <div class="container-xxl">&copy; <span id="yearNow"></span> Spin Wheel • Bootstrap 5 + JavaScript • State: localStorage</div>
+  </footer>
+</div>
+
+<!-- Winner Overlay Modal -->
+<div class="modal fade" id="winModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-trophy me-2 text-warning"></i><span id="winTitle">Pemenang</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="winDesc" class="mb-3"></div>
+        <div class="table-responsive border rounded p-1">
+          <table class="table table-sm align-middle mb-0" id="tblWinList">
+            <thead class="table-light"><tr><th>#</th><th>Nama</th><th>NPK</th><th>Department</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
-
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="btnSaveContinue"><i class="bi bi-check2-circle"></i> Simpan & Lanjut</button>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Winner Overlay -->
-  <div class="winner-overlay" id="winnerOverlay">
-    <div class="card winner-card text-center">
-      <div class="card-body p-4 p-md-5">
-        <div class="display-6 mb-2">🎉 SELAMAT! 🎉</div>
-        <div class="fs-4">Pemenang:</div>
-        <div class="fw-bold h2 my-2" id="ovName">—</div>
-        <div class="fs-5">Hadiah:</div>
-        <div class="fw-bold h3 my-2" id="ovPrize">—</div>
-        <button class="btn btn-accent mt-3" id="btnCloseOverlay">Tutup</button>
-      </div>
-    </div>
-  </div>
+<!-- Beep audio (optional) -->
+<audio id="audioWin" preload="auto">
+  <source src="https://cdn.jsdelivr.net/gh/naptha/tinyfiledialogs/sounds/notify.wav" type="audio/wav">
+</audio>
 
-  <!-- Bootstrap & libs -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
-  <script>
-    // ======== State ========
-    const palette = [
-      '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#f97316', '#14b8a6', '#22c55e', '#eab308', '#06b6d4',
-      '#fb7185', '#60a5fa', '#34d399', '#f472b6', '#a3e635', '#93c5fd', '#facc15', '#84cc16', '#f43f5e', '#6366f1'
-    ];
+<!-- Dependencies: Bootstrap JS, SheetJS, FileSaver polyfill (via SheetJS), Confetti -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-    let prizes = []; // [{name, qty}]
-    let remaining = []; // deep copy of prizes with remaining qty
-    let participants = []; // unique names
-    let remainingParticipants = [];
-    let colorMap = {}; // name -> color
+<script>
+/*****************************\
+|*  SPIN WHEEL — CORE STATE  *|
+\*****************************/
+const store = {
+  get key(){ return 'sw.v1'; },
+  load(){
+    const s = JSON.parse(localStorage.getItem(this.key) || '{}');
+    return Object.assign({
+      participants: [], // {npk, name, dept, won:false}
+      prizes: [],       // {name, qtyTotal, qtyLeft, color}
+      winners: [],      // {timeISO, prizeName, count, winners:[{npk,name,dept}]}
+      theme: 'light',
+      confetti: true,
+      sound: false
+    }, s);
+  },
+  save(part){ localStorage.setItem(this.key, JSON.stringify(part)); }
+};
+let state = store.load();
+let undoSnapshot = null; // for one-level undo
 
-    // Wheel state
-    const canvas = document.getElementById('wheel');
-    const ctx = canvas.getContext('2d');
-    let angle = 0; // current rotation in radians
-    let spinning = false;
+/*****************************\n|*  UTILITIES               *|\n*****************************/
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const fmtTime = iso => new Date(iso).toLocaleString();
+const deepClone = obj => JSON.parse(JSON.stringify(obj));
+const randomInt = (maxExclusive) => {
+  // cryptographically strong integer in [0, maxExclusive)
+  if (maxExclusive <= 0) return 0;
+  const range = Math.floor(maxExclusive);
+  const max = 0xFFFFFFFF;
+  const arr = new Uint32Array(1);
+  let x;
+  do { crypto.getRandomValues(arr); x = arr[0] / (max + 1); } while (x === 1);
+  return Math.floor(x * range);
+};
+function weightedChoice(weights){
+  // weights: array of positive numbers
+  const total = weights.reduce((a,b)=>a+b,0);
+  if (total <= 0) return -1;
+  const r = randomInt(1e9) / 1e9 * total; // high resolution draw
+  let c = 0;
+  for (let i=0;i<weights.length;i++){ c += weights[i]; if (r < c) return i; }
+  return weights.length-1;
+}
 
-    // ======== Helpers ========
-    const hash = (s) => s.split('').reduce((a,c)=>((a<<5)-a + c.charCodeAt(0))|0,0) >>> 0;
-    function colorFor(name){
-      if(colorMap[name]) return colorMap[name];
-      const h = hash(name);
-      const col = palette[h % palette.length];
-      return colorMap[name] = col;
+/*****************************\n|*  THEME & TOGGLES         *|\n*****************************/
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', state.theme);
+  $('body').classList.toggle('bg-dark', state.theme==='dark');
+  $('#themeToggle').setAttribute('aria-pressed', state.theme==='dark' ? 'true' : 'false');
+  $('#themeToggle').innerHTML = state.theme==='dark' ? '<i class="bi bi-moon"></i> <span class="ms-1">Dark</span>' : '<i class="bi bi-sun"></i> <span class="ms-1">Light</span>';
+}
+$('#themeToggle').addEventListener('click', ()=>{ state.theme = (state.theme==='light'?'dark':'light'); store.save(state); applyTheme(); drawWheel();});
+$('#confettiToggle').checked = !!state.confetti; $('#confettiToggle').addEventListener('change', e=>{ state.confetti=e.target.checked; store.save(state); });
+$('#soundToggle').checked = !!state.sound; $('#soundToggle').addEventListener('change', e=>{ state.sound=e.target.checked; store.save(state); });
+
+/*****************************\n|*  IMPORT / PARSE          *|\n*****************************/
+function parseCSV(text){
+  // Simple CSV (no complex quotes); expect comma-separated
+  return text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean).map(r=>r.split(',').map(c=>c.trim()));
+}
+function readFileAsArrayBuffer(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsArrayBuffer(file); }); }
+function readFileAsText(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsText(file); }); }
+
+async function handleImport(file, type){
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  try{
+    let rows = [];
+    if (ext === 'xlsx'){
+      const buf = await readFileAsArrayBuffer(file);
+      const wb = XLSX.read(buf, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, defval:''});
+    } else if (ext === 'csv'){
+      const txt = await readFileAsText(file);
+      rows = parseCSV(txt);
+    } else { throw new Error('Format tidak didukung'); }
+
+    if (type==='peserta'){
+      // Validate header exactly: NPK, Nama, Department
+      const [h1, h2, h3] = (rows[0]||[]).map(h=>h.trim());
+      if (!(h1==='NPK' && h2==='Nama' && h3==='Department')) throw new Error('Header peserta harus: NPK,Nama,Department');
+      const items = rows.slice(1).filter(r=>r.length>=3 && r[0]).map(r=>({npk:String(r[0]).trim(), name:String(r[1]).trim(), dept:String(r[2]).trim(), won:false}));
+      setParticipants(items);
+      alert('Data peserta tersimpan. Klik "View Data" untuk menampilkan tabel.');
+    } else if (type==='hadiah'){
+      // Header: NamaHadiah, Jumlah, WarnaHex (opsional -> tetap harus ada kolom)
+      const [h1, h2, h3] = (rows[0]||[]).map(h=>h.trim());
+      if (!(h1==='NamaHadiah' && h2==='Jumlah' && h3==='WarnaHex')) throw new Error('Header hadiah harus: NamaHadiah,Jumlah,WarnaHex');
+      const items = rows.slice(1).filter(r=>r.length>=2 && r[0]).map((r,i)=>({
+        name:String(r[0]).trim(),
+        qtyTotal: Math.max(0, parseInt(r[1],10)||0),
+        qtyLeft: Math.max(0, parseInt(r[1],10)||0),
+        color: (r[2] && /^#([0-9a-fA-F]{3}){1,2}$/.test(String(r[2]).trim())) ? String(r[2]).trim() : defaultColor(i)
+      }));
+      setPrizes(items);
+      alert('Data hadiah tersimpan. Klik "Preview Hadiah" untuk perbarui roda.');
     }
+  }catch(err){
+    alert('Gagal impor: ' + err.message);
+  }
+}
 
-    function parseParticipants(text){
-      return [...new Set(text.split(/\n|,|;|\t/g).map(s=>s.trim()).filter(Boolean))];
-    }
+// Copy-paste parse
+$('#btnParsePeserta').addEventListener('click', ()=>{
+  const rows = parseCSV($('#pastePeserta').value.trim());
+  const items = rows.filter(r=>r.length>=3 && r[0]).map(r=>({npk:String(r[0]).trim(), name:String(r[1]).trim(), dept:String(r[2]).trim(), won:false}));
+  setParticipants(items); alert('Data peserta tersimpan. Klik "View Data" untuk melihat tabel.');
+});
+$('#btnParseHadiah').addEventListener('click', ()=>{
+  const rows = parseCSV($('#pasteHadiah').value.trim());
+  const items = rows.filter(r=>r.length>=2 && r[0]).map((r,i)=>({ name:String(r[0]).trim(), qtyTotal:Math.max(0,parseInt(r[1],10)||0), qtyLeft:Math.max(0,parseInt(r[1],10)||0), color:(r[2] && /^#([0-9a-fA-F]{3}){1,2}$/.test(String(r[2]).trim())) ? String(r[2]).trim() : defaultColor(i) }));
+  setPrizes(items); alert('Data hadiah tersimpan. Klik "Preview Hadiah" untuk perbarui roda.');
+});
 
-    function parsePrizes(text){
-      const lines = text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
-      const acc = {};
-      for(const line of lines){
-        // accept: "Nama x2" or "Nama,2" or "Nama 2"
-        const m1 = line.match(/^(.+?)[\s,]*x?\s*(\d+)$/i);
-        const name = m1 ? m1[1].trim() : line;
-        const qty = m1 ? Math.max(1, parseInt(m1[2],10)) : 1;
-        acc[name] = (acc[name]||0) + qty;
-      }
-      return Object.entries(acc).map(([name, qty])=>({name, qty}));
-    }
+$('#filePeserta').addEventListener('change', e=>handleImport(e.target.files[0], 'peserta'));
+$('#fileHadiah').addEventListener('change', e=>handleImport(e.target.files[0], 'hadiah'));
 
-    function totalQty(){ return remaining.reduce((t,p)=>t+p.qty,0); }
+$('#btnViewPeserta').addEventListener('click', renderParticipantsTable);
+$('#btnPreviewHadiah').addEventListener('click', ()=>{updatePrizeSummary(); drawWheel();});
+$('#btnClearPeserta').addEventListener('click', ()=>{ if(confirm('Hapus semua peserta?')){ state.participants=[]; store.save(state); renderParticipantsTable(true);} });
+$('#btnClearHadiah').addEventListener('click', ()=>{ if(confirm('Hapus semua hadiah?')){ state.prizes=[]; store.save(state); updatePrizeSummary(); drawWheel(); } });
 
-    function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+// Sample file generators
+$('#btnSamplePeserta').addEventListener('click', ()=>{
+  const ws = XLSX.utils.aoa_to_sheet([["NPK","Nama","Department"],["1001","Budi Santoso","Finance"],["1002","Siti Aminah","HR"]]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Peserta'); XLSX.writeFile(wb, 'peserta-sample.xlsx');
+});
+$('#btnSampleHadiah').addEventListener('click', ()=>{
+  const ws = XLSX.utils.aoa_to_sheet([["NamaHadiah","Jumlah","WarnaHex"],["Motor",1,"#D81B60"],["Kulkas",1,"#1E88E5"],["Rumah",2,"#43A047"],["TV",5,"#FB8C00"],["Lemari",1,"#8E24AA"]]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Hadiah'); XLSX.writeFile(wb, 'hadiah-sample.xlsx');
+});
 
-    function rad(deg){ return deg * Math.PI / 180; }
+function setParticipants(items){
+  // Enforce unique NPK (first occurrence wins), mark duplicates
+  const seen = new Set();
+  const uniques = []; let dups=0;
+  for (const it of items){
+    if (!it.npk) continue;
+    if (seen.has(it.npk)) { dups++; continue; }
+    seen.add(it.npk); uniques.push({npk:it.npk, name:it.name||'', dept:it.dept||'', won:false});
+  }
+  state.participants = uniques;
+  state.winners = state.winners || [];
+  store.save(state);
+  $('#dupPeserta').textContent = dups;
+}
+function setPrizes(items){
+  // Remove qty 0 entries; keep color consistent
+  const clean = items.filter(p=>p.qtyTotal>0).map(p=>({name:p.name, qtyTotal:p.qtyTotal, qtyLeft:p.qtyLeft, color:p.color||defaultColor(0)}));
+  state.prizes = clean; store.save(state); updatePrizeSummary();
+}
 
-    function drawWheel(){
-      const w = canvas.width, h = canvas.height; const r = Math.min(w,h)/2 - 10;
-      ctx.clearRect(0,0,w,h);
-      ctx.save();
-      ctx.translate(w/2, h/2);
-      ctx.rotate(angle);
+function renderParticipantsTable(hideIfEmpty=false){
+  const wrap = $('#wrapPesertaTable'); const tbody = $('#tblPeserta tbody');
+  tbody.innerHTML='';
+  state.participants.forEach(p=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(p.npk)}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.dept)}</td><td>${p.won?'<span class="badge text-bg-success">Menang</span>':'<span class="badge text-bg-secondary">Belum</span>'}</td>`;
+    tbody.appendChild(tr);
+  });
+  $('#sumPeserta').textContent = state.participants.length;
+  wrap.hidden = !(state.participants.length>0) && hideIfEmpty;
+  wrap.hidden = state.participants.length===0; // always show if any
+}
 
-      const total = Math.max(1, totalQty());
-      let start = -Math.PI/2; // start from top
+function updatePrizeSummary(){
+  const total = state.prizes.reduce((a,p)=>a+p.qtyTotal,0);
+  const left = state.prizes.reduce((a,p)=>a+p.qtyLeft,0);
+  $('#totalHadiah').textContent = total; $('#sisaHadiah').textContent = left;
+  $('#wrapHadiahSummary').hidden = state.prizes.length===0;
+  infoRealtime();
+}
 
-      for(const p of remaining){
-        const frac = p.qty / total; // proportional to remaining qty
-        const arc = frac * Math.PI * 2;
-        // slice
-        ctx.beginPath();
-        ctx.moveTo(0,0);
-        ctx.arc(0,0,r, start, start+arc);
-        ctx.closePath();
-        ctx.fillStyle = colorFor(p.name);
-        ctx.fill();
-        // stroke ring to separate
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(0,0,0,.15)';
-        ctx.stroke();
-        // text label (only once)
-        ctx.save();
-        const mid = start + arc/2;
-        ctx.rotate(mid);
-        ctx.translate(r*0.68, 0);
-        ctx.rotate(Math.PI/2);
-        ctx.fillStyle = '#fff';
-        ctx.font = '700 24px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const label = p.name.toUpperCase();
-        // text shadow for readability
-        ctx.shadowColor = 'rgba(0,0,0,.25)';
-        ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
-        ctx.fillText(label, 0, 0, r*0.9);
-        ctx.restore();
+/*****************************\n|*  WHEEL RENDERING         *|\n*****************************/
+const canvas = $('#wheelCanvas'); const ctx = canvas.getContext('2d');
+let wheelRotation = 0; // radians, 0 at pointing up
+let sectors = []; // computed from prizes (equal slices per prize type)
 
-        p._start = start; p._end = start + arc; // store for hit-test
-        start += arc;
-      }
+function defaultColor(i){
+  const palette = ['#D81B60','#1E88E5','#43A047','#FB8C00','#8E24AA','#00897B','#3949AB','#F4511E','#6D4C41','#7CB342','#5E35B1','#00ACC1'];
+  return palette[i % palette.length];
+}
+function buildSectors(){
+  sectors = state.prizes.map((p, idx)=>({
+    name:p.name, color:p.color||defaultColor(idx), idx,
+  }));
+}
+function drawWheel(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  buildSectors();
+  const n = Math.max(1, sectors.length);
+  const cx = canvas.width/2, cy=cx, r = canvas.width/2 - 10;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(wheelRotation);
+  const arc = (Math.PI*2)/n;
+  for (let i=0;i<n;i++){
+    const s = sectors[i];
+    const start = i*arc; const end = start + arc;
+    // slice
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.arc(0,0,r,start,end); ctx.closePath();
+    ctx.fillStyle = s.color; ctx.fill();
+    // separator
+    ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 2; ctx.stroke();
+    // label
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.rotate(start + arc/2);
+    ctx.textAlign='right'; ctx.font = 'bold 40px system-ui, -apple-system, Segoe UI, Roboto';
+    const text = s.name; wrapText(ctx, text, r-30, 26);
+    ctx.restore();
+  }
+  // center hub
+  ctx.beginPath(); ctx.arc(0,0,60,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=4; ctx.stroke();
+  ctx.restore();
+}
+function wrapText(ctx, text, maxWidth, lineHeight){
+  const words = text.split(' ');
+  let line=''; let y=0;
+  for (let n=0;n<words.length;n++){
+    const test = line + words[n] + ' ';
+    const w = ctx.measureText(test).width;
+    if (w > maxWidth && n>0){ ctx.fillText(line, maxWidth, 0+y); line = words[n] + ' '; y += lineHeight; }
+    else line = test;
+  }
+  ctx.fillText(line, maxWidth, 0+y);
+}
 
-      // outer rim
-      ctx.beginPath();
-      ctx.arc(0,0,r+6,0,Math.PI*2);
-      ctx.lineWidth = 12; ctx.strokeStyle = '#fff';
-      ctx.stroke();
+/*****************************\n|*  SPIN LOGIC (FAIR RNG)   *|\n*****************************/
+let spinning = false;
+async function spin(){
+  if (spinning) return; if (state.prizes.length===0) return alert('Masukkan & preview hadiah terlebih dahulu.');
+  const remainingParticipants = state.participants.filter(p=>!p.won);
+  const weights = state.prizes.map(p=>Math.max(0, p.qtyLeft));
+  if (weights.reduce((a,b)=>a+b,0) <= 0) return alert('Semua hadiah habis.');
 
-      ctx.restore();
-    }
+  const prizeIndex = weightedChoice(weights);
+  const prize = state.prizes[prizeIndex];
+  if (!prize || prize.qtyLeft<=0) return alert('Hadiah terpilih tidak tersedia.');
 
-    function rebuildLegend(){
-      const ul = document.getElementById('legend');
-      ul.innerHTML = '';
-      for(const p of remaining){
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
-        li.innerHTML = `<span><i class="legend-swatch" style="background:${colorFor(p.name)}"></i>${p.name}</span>`+
-          `<span class="badge text-bg-light badge-qty">x${p.qty}</span>`;
-        ul.appendChild(li);
-      }
-    }
+  // Pick winners now (before animation), but don't apply until confirm (Simpan & Lanjut)
+  const qty = Math.min(prize.qtyLeft, remainingParticipants.length);
+  if (qty<=0) return alert('Tidak ada peserta tersisa.');
 
-    function rebuildQuota(){
-      const ul = document.getElementById('quota');
-      ul.innerHTML = '';
-      for(const p of remaining){
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
-        li.innerHTML = `<span>${p.name}</span><span class="badge text-bg-secondary">Sisa: ${p.qty}</span>`;
-        ul.appendChild(li);
-      }
-    }
+  const picks = pickUniqueRandom(remainingParticipants, qty);
+  const sectorAngle = (Math.PI*2)/Math.max(1, sectors.length);
+  const targetSectorCenter = (prizeIndex + 0.5) * sectorAngle;
+  const currentAngle = (wheelRotation % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+  // We want the pointer (fixed up) to land on target => rotate wheel so that target center reaches top ( -0 )
+  let delta = (Math.PI*2 - targetSectorCenter) - currentAngle;
+  delta = ((delta + Math.PI*2) % (Math.PI*2));
+  const turns = 4; // full extra spins
+  const duration = parseFloat($('#rangeSpeed').value) * 1000;
 
-    function rebuildParticipantsSelect(){
-      const sel = document.getElementById('selPeserta');
-      sel.innerHTML = '';
-      for(const n of remainingParticipants){
-        const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt);
-      }
-    }
+  await animateRotation(wheelRotation, wheelRotation + delta + turns*Math.PI*2, duration, easeOutCubic);
 
-    function setStatus(t){ document.getElementById('statusBadge').textContent = t; }
+  // Effects + overlay
+  if (state.sound) { try { $('#audioWin').currentTime=0; $('#audioWin').play(); } catch{} }
+  if (state.confetti){ confetti({spread: 70, particleCount: 120, scalar: 1}); }
 
-    function confettiBurst(){
-      const duration = 1600;
-      const end = Date.now() + duration;
-      (function frame(){
-        confetti({ particleCount: 4, spread: 70, origin: { y: 0.6 } });
-        if(Date.now() < end) requestAnimationFrame(frame);
-      })();
-    }
+  showWinnersOverlay(prize, picks);
+  // Prepare undo snapshot and pending apply on Save & Continue
+  undoSnapshot = deepClone(state);
+  $('#btnSaveContinue').onclick = ()=>{
+    // Apply outcome: mark winners, deduct stock, push history
+    for (const w of picks){ const idx = state.participants.findIndex(p=>p.npk===w.npk); if (idx>=0) state.participants[idx].won = true; }
+    prize.qtyLeft -= picks.length; if (prize.qtyLeft<0) prize.qtyLeft=0;
+    state.winners.push({timeISO:new Date().toISOString(), prizeName:prize.name, count:picks.length, winners:picks});
+    store.save(state);
+    updatePrizeSummary(); drawWheel(); renderWinnersTable(); renderParticipantsTable();
+  };
+}
 
-    function pickPrizeWeighted(){
-      const total = totalQty(); if(total<=0) return null;
-      let r = Math.random() * total;
-      for(const p of remaining){
-        if(r < p.qty) return p;
-        r -= p.qty;
-      }
-      return remaining.at(-1) || null;
-    }
+function pickUniqueRandom(arr, n){
+  const pool = arr.slice(); const res = [];
+  for (let i=0;i<n;i++){
+    const j = randomInt(pool.length);
+    res.push(pool[j]); pool.splice(j,1);
+  }
+  return res;
+}
 
-    function findSegmentAngles(prize){
-      // Find stored angles (after drawWheel sets _start/_end)
-      for(const p of remaining){
-        if(p.name === prize.name){ return {start:p._start, end:p._end}; }
-      }
-      return {start:-Math.PI/2, end:-Math.PI/2};
-    }
-
-    function spinToPrize(prize){
-      if(spinning) return;
-      const speed = parseFloat(document.getElementById('speed').value); // deg/s
-      const duration = parseFloat(document.getElementById('duration').value); // s
-      const minRot = rad(speed * duration); // total radians to rotate baseline
-
-      const seg = findSegmentAngles(prize);
-      // target is arrow up (top), wheel rotates so that segment's mid aligns to top
-      const mid = (seg.start + seg.end)/2;
-      // we want angle_end such that (current angle + spin) % TAU makes mid end at -PI/2
-      const TAU = Math.PI*2;
-      let targetAngle = angle + minRot; // baseline spin forward
-      // compute delta required to land mid at top: topAngle = -PI/2
-      const alignDelta = (-Math.PI/2) - mid;
-      targetAngle += alignDelta;
-      // add a few extra full turns for flair
-      const extraTurns = 2 + Math.floor(Math.random()*2); // 2-3 extra turns
-      targetAngle += extraTurns * TAU;
-
-      // animation
-      const startTime = performance.now();
-      const startAngle = angle;
-      const totalDelta = targetAngle - startAngle;
-      spinning = true; setStatus('Berputar…');
-
-      function tick(now){
-        const t = Math.min(1, (now - startTime) / (duration*1000));
-        const eased = easeOutCubic(t);
-        angle = startAngle + totalDelta * eased;
-        drawWheel();
-        if(t < 1) {
-          requestAnimationFrame(tick);
-        } else {
-          spinning = false; angle = angle % (Math.PI*2);
-          setStatus('Selesai');
-          onSpinEnd(prize);
-        }
-      }
-      requestAnimationFrame(tick);
-    }
-
-    function onSpinEnd(prize){
-      // Reveal winner
-      const sel = document.getElementById('selPeserta');
-      const name = sel.value || remainingParticipants[0];
-      if(!name){ alert('Masukkan peserta terlebih dahulu.'); return; }
-
-      // Update quotas and participants
-      const p = remaining.find(x=>x.name===prize.name);
-      if(p){ p.qty--; if(p.qty<=0){ remaining = remaining.filter(x=>x.qty>0); } }
-      remainingParticipants = remainingParticipants.filter(n=>n!==name);
-
-      // UI rebuild
-      rebuildLegend();
-      rebuildQuota();
-      rebuildParticipantsSelect();
+function animateRotation(from, to, duration, easing){
+  return new Promise(resolve=>{
+    spinning = true; const start = performance.now();
+    function step(now){
+      const t = Math.min(1, (now - start)/duration);
+      const eased = easing(t);
+      wheelRotation = from + (to - from) * eased;
       drawWheel();
-
-      // Winners list
-      const li = document.createElement('li');
-      li.className = 'list-group-item d-flex justify-content-between align-items-center';
-      li.innerHTML = `<span><strong>${name}</strong></span><span class="badge text-bg-success">${prize.name}</span>`;
-      document.getElementById('winners').prepend(li);
-
-      // Overlay + Confetti
-      document.getElementById('ovName').textContent = name;
-      document.getElementById('ovPrize').textContent = prize.name;
-      document.getElementById('winnerOverlay').style.display = 'flex';
-      confettiBurst();
-
-      // Auto-close overlay after a bit (optional)
-      setTimeout(()=>{ document.getElementById('winnerOverlay').style.display='none'; }, 4000);
-
-      // If no participants or no prizes left -> disable spin
-      if(remainingParticipants.length===0 || totalQty()===0){
-        document.getElementById('btnSpin').disabled = true;
-        setStatus('Undian selesai');
-      }
+      if (t < 1) requestAnimationFrame(step); else { spinning=false; resolve(); }
     }
+    requestAnimationFrame(step);
+  });
+}
+function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
 
-    // ======== Event wiring ========
-    document.getElementById('btnLoad').addEventListener('click', ()=>{
-      const ptext = document.getElementById('taPeserta').value.trim();
-      const htext = document.getElementById('taHadiah').value.trim();
-      participants = parseParticipants(ptext);
-      remainingParticipants = participants.slice();
-      prizes = parsePrizes(htext);
-      remaining = JSON.parse(JSON.stringify(prizes));
+$('#btnSpin').addEventListener('click', spin);
+$('#btnInfo').addEventListener('click', ()=>infoRealtime(true));
 
-      if(remainingParticipants.length===0){
-        // quick default if empty, as per example in prompt
-        remainingParticipants = ['Peserta 1','Peserta 2','Peserta 3','Peserta 4','Peserta 5','Peserta 6','Peserta 7','Peserta 8','Peserta 9','Peserta 10'];
-      }
-      if(remaining.length===0){
-        remaining = [ {name:'Motor',qty:1},{name:'Kulkas',qty:1},{name:'Rumah',qty:2},{name:'TV',qty:5},{name:'Lemari',qty:1} ];
-      }
+function infoRealtime(showAlert=false){
+  const leftParticipants = state.participants.filter(p=>!p.won).length;
+  const lines = [];
+  lines.push(`Peserta belum menang: ${leftParticipants}`);
+  if (state.prizes.length){
+    const sisa = state.prizes.map(p=>`${p.name} (${p.qtyLeft}/${p.qtyTotal})`).join(', ');
+    lines.push('Hadiah tersisa: ' + sisa);
+  }
+  $('#infoRealtime').textContent = lines.join(' • ');
+  if (showAlert) alert(lines.join('\n'));
+}
 
-      rebuildParticipantsSelect();
-      rebuildLegend();
-      rebuildQuota();
-      drawWheel();
-      setStatus('Siap');
-      document.getElementById('btnSpin').disabled = false;
+/*****************************\n|*  OVERLAY & HISTORY       *|\n*****************************/
+const winModal = new bootstrap.Modal($('#winModal'));
+function showWinnersOverlay(prize, picks){
+  $('#winTitle').textContent = `Pemenang — ${prize.name}`;
+  $('#winDesc').innerHTML = `<span class="badge" style="background:${prize.color}">${escapeHtml(prize.name)}</span> &times; ${picks.length}`;
+  const tbody = $('#tblWinList tbody'); tbody.innerHTML='';
+  picks.forEach((w,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(w.name)}</td><td>${escapeHtml(w.npk)}</td><td>${escapeHtml(w.dept)}</td>`;
+    tbody.appendChild(tr);
+  });
+  winModal.show();
+}
+
+function renderWinnersTable(){
+  const tbody = $('#tblWinners tbody'); tbody.innerHTML='';
+  state.winners.forEach(row=>{
+    row.winners.forEach(w=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${fmtTime(row.timeISO)}</td><td>${escapeHtml(row.prizeName)}</td><td>${row.count}</td><td>${escapeHtml(w.name)}</td><td>${escapeHtml(w.npk)}</td><td>${escapeHtml(w.dept)}</td>`;
+      tbody.appendChild(tr);
     });
+  });
+}
 
-    document.getElementById('btnReset').addEventListener('click', ()=>{
-      participants = []; remainingParticipants = [];
-      prizes = []; remaining = [];
-      document.getElementById('taPeserta').value = '';
-      document.getElementById('taHadiah').value = '';
-      document.getElementById('legend').innerHTML = '';
-      document.getElementById('quota').innerHTML = '';
-      document.getElementById('winners').innerHTML = '';
-      document.getElementById('selPeserta').innerHTML = '';
-      angle = 0; drawWheel();
-      setStatus('Siap');
-      document.getElementById('btnSpin').disabled = true;
-    });
+$('#btnUndo').addEventListener('click', ()=>{
+  if (!undoSnapshot) return alert('Belum ada aksi untuk di-undo.');
+  state = undoSnapshot; store.save(state);
+  undoSnapshot = null;
+  updatePrizeSummary(); drawWheel(); renderWinnersTable(); renderParticipantsTable();
+});
+$('#btnResetAll').addEventListener('click', ()=>{
+  if (confirm('Reset seluruh data (peserta, hadiah, riwayat)?')){
+    state = {participants:[], prizes:[], winners:[], theme: state.theme, confetti: state.confetti, sound: state.sound};
+    store.save(state); renderParticipantsTable(true); updatePrizeSummary(); drawWheel(); renderWinnersTable();
+  }
+});
 
-    document.getElementById('btnRandPeserta').addEventListener('click', ()=>{
-      if(remainingParticipants.length===0) return;
-      const i = Math.floor(Math.random()*remainingParticipants.length);
-      document.getElementById('selPeserta').value = remainingParticipants[i];
-    });
+/*****************************\n|*  EXPORT WINNERS          *|\n*****************************/
+$('#btnExportCSV').addEventListener('click', ()=>{
+  const rows = [['Waktu','Hadiah','Jumlah','Nama','NPK','Department']];
+  state.winners.forEach(r=>{ r.winners.forEach(w=> rows.push([r.timeISO, r.prizeName, r.count, w.name, w.npk, w.dept])); });
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`winners-${new Date().toISOString().replace(/[:.]/g,'')}.csv`});
+  document.body.appendChild(a); a.click(); a.remove();
+});
+$('#btnExportXLSX').addEventListener('click', ()=>{
+  const rows = [['Waktu','Hadiah','Jumlah','Nama','NPK','Department']];
+  state.winners.forEach(r=>{ r.winners.forEach(w=> rows.push([fmtTime(r.timeISO), r.prizeName, r.count, w.name, w.npk, w.dept])); });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Winners');
+  XLSX.writeFile(wb, `winners-${new Date().toISOString().replace(/[:.]/g,'')}.xlsx`);
+});
 
-    document.getElementById('btnSpin').addEventListener('click', ()=>{
-      if(spinning) return;
-      if(remainingParticipants.length===0){ alert('Peserta habis.'); return; }
-      if(totalQty()===0){ alert('Hadiah habis.'); return; }
-      // Weighted pick but wheel slice sizes also reflect qty, so any prize can be targeted to top
-      const prize = pickPrizeWeighted();
-      // redraw before computing angles to ensure _start/_end are up-to-date
-      drawWheel();
-      spinToPrize(prize);
-    });
+/*****************************\n|*  HELPERS                 *|\n*****************************/
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 
-    document.getElementById('btnCloseOverlay').addEventListener('click', ()=>{
-      document.getElementById('winnerOverlay').style.display = 'none';
-    });
-
-    // Theme toggle
-    const themeBtn = document.getElementById('toggleTheme');
-    themeBtn.addEventListener('click', ()=>{
-      const html = document.documentElement;
-      const cur = html.getAttribute('data-bs-theme');
-      const next = cur === 'dark' ? 'light' : 'dark';
-      html.setAttribute('data-bs-theme', next);
-      document.getElementById('themeIcon').textContent = next==='dark' ? '🌞' : '🌙';
-      drawWheel();
-    });
-
-    // Initial draw (empty wheel placeholder)
+/*****************************\n|*  INIT                    *|\n*****************************/
+(function init(){
+  applyTheme();
+  // make wheel crisp on HiDPI
+  function resizeCanvas(){
+    const dpr = Math.max(1, window.devicePixelRatio||1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
     drawWheel();
+  }
+  new ResizeObserver(resizeCanvas).observe($('.wheel-stage'));
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
 
-    // ======== Prefill example to match prompt ========
-    document.getElementById('taPeserta').value = `Andi\nBudi\nCitra\nDewi\nEvan\nFajar\nGita\nHadi\nIntan\nJoko`;
-    document.getElementById('taHadiah').value = `Motor x1\nKulkas x1\nRumah x2\nTV x5\nLemari x1`;
-  </script>
+  // Restore toggles
+  $('#confettiToggle').checked = !!state.confetti; $('#soundToggle').checked = !!state.sound;
+
+  // Render existing data
+  renderParticipantsTable(true); updatePrizeSummary(); renderWinnersTable(); drawWheel();
+  $('#yearNow').textContent = new Date().getFullYear();
+})();
+</script>
 </body>
 </html>
