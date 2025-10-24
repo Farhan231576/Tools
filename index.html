@@ -1,558 +1,748 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id" data-bs-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Undian Spin Wheel</title>
   <!-- Bootstrap 5 -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <style>
     :root{
-      --brand: #4f46e5; /* indigo */
-      --bg-soft: #f8fafc;
-      --card-radius: 16px;
+      --wheel-size: 540px; /* disk base size; will scale responsif */
+      --panel-w: 420px;
     }
-    body{background: var(--bg-soft);}    
-    .app{max-width: 1200px; margin: 24px auto;}
-    .card{border: 1px solid rgba(0,0,0,.06); border-radius: var(--card-radius);} 
-    .card .card-header{border-bottom: 1px solid rgba(0,0,0,.06)}
-    .btn-brand{background: var(--brand); border-color: var(--brand);} 
-    .btn-brand:hover{filter: brightness(.95)}
 
-    /* Wheel layout */
-    .wheel-wrap{ position: relative; width: 520px; max-width: 100%; aspect-ratio: 1/1; margin-inline: auto; }
-    canvas#wheel{ width: 100%; height: 100%; display: block; }
-    /* Top pointer (panah) fixed di atas lingkaran */
-    .pointer{ position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 18px solid transparent; border-right: 18px solid transparent; border-top: 0; border-bottom: 28px solid var(--brand); filter: drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
-    /* Panah kecil di tengah bulatan (permintaan khusus) */
-    .center-arrow{ position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 14px solid var(--brand); }
-    .wheel-btns{ display:flex; gap: 10px; justify-content:center; flex-wrap: wrap; }
+    html,body{height:100%;}
+    body{overflow:hidden;}
 
-    /* Winner overlay */
-    .winner-overlay{ position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(2px); display:none; align-items:center; justify-content:center; z-index: 50; }
-    .winner-card{ background: var(--bs-body-bg); color: var(--bs-body-color); border-radius: 18px; box-shadow: 0 16px 48px rgba(0,0,0,.3); padding: 22px; width: min(720px, 92vw); max-height: 80vh; overflow:auto; border:1px solid rgba(255,255,255,.1)}
-    .winner-title{ font-weight: 800; letter-spacing:.2px; }
+    /* Layout utama agar muat 1366×768 tanpa scroll; tabel riwayat scroll internal */
+    .app-wrap{height:100dvh; display:grid; grid-template-columns: 1fr var(--panel-w); grid-template-rows: auto 1fr; grid-template-areas:
+      "toolbar toolbar" 
+      "stage side";}
 
-    /* Confetti canvas */
-    #confetti{ position: fixed; inset: 0; pointer-events: none; z-index: 60; display:none; }
-
-    /* Controls tidy */
-    .grid{ display:grid; gap: 16px; }
-    @media(min-width: 992px){
-      .grid-cols{ grid-template-columns: 380px 1fr; }
+    @media (max-width: 1200px){
+      :root{--panel-w: 380px}
     }
-    textarea.form-control{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.9rem; }
+    @media (max-width: 992px){ /* fallback perangkat kecil */
+      body{overflow:auto}
+      .app-wrap{grid-template-columns: 1fr; grid-template-rows:auto auto auto; grid-template-areas:
+        "toolbar" "stage" "side"; height:auto}
+    }
 
-    .badge-dot{ display:inline-flex; align-items:center; gap:6px; }
-    .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .toolbar{grid-area:toolbar; border-bottom:1px solid var(--bs-border-color);}
+    .stage{grid-area:stage; display:grid; place-items:center; padding:8px}
+    .side{grid-area:side; border-left:1px solid var(--bs-border-color); overflow:auto}
+
+    /* Wheel container */
+    .wheel-wrap{display:grid; place-items:center; width:100%;}
+    .wheel-outer{position:relative; aspect-ratio:1/1; max-width: min(90vw, var(--wheel-size));}
+    canvas#wheel{width:100%; height:100%;}
+
+    /* Pointer panah di tengah */
+    .pointer{position:absolute; inset:0; display:grid; place-items:center; pointer-events:none}
+    .pointer svg{width:68px; height:68px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.25));}
+
+    /* Panel samping */
+    .side .accordion-button{font-weight:600}
+
+    /* Ringkasan */
+    .stat-pill{display:flex; align-items:center; gap:.5rem; padding:.5rem .75rem; border-radius:999px; border:1px solid var(--bs-border-color);}
+
+    /* Tabel riwayat */
+    .history-wrap{height: 38vh; overflow:auto;}
+    .table-fixed thead th{position: sticky; top: 0; background: var(--bs-body-bg); z-index: 2}
+
+    /* Fokus & aksesibilitas */
+    .btn,.form-control,.form-select{min-height:42px}
+    .form-range{height:2rem}
+
+    /* Dark-mode high-contrast tweak */
+    [data-bs-theme="dark"] .table > :not(caption) > * > *{background-color:rgba(255,255,255,.015)}
+
+    /* winner highlight */
+    .winner-badge{font-weight:700;}
   </style>
 </head>
 <body>
-  <div class="app">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <h1 class="h4 m-0">🎯 Undian Spin Wheel</h1>
+<div class="app-wrap">
+  <!-- Toolbar: Tema, Suara, Konfeti, Speed, Aksi -->
+  <div class="toolbar py-2 px-3 d-flex align-items-center gap-2 flex-wrap">
+    <div class="me-auto d-flex align-items-center gap-2">
+      <span class="fw-semibold">Undian Spin Wheel</span>
+      <span class="text-body-secondary">&middot; Bootstrap + JS</span>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="toggleTheme">
+        <label class="form-check-label" for="toggleTheme">Dark</label>
+      </div>
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="toggleSound" checked>
+        <label class="form-check-label" for="toggleSound">Suara</label>
+      </div>
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="toggleConfetti" checked>
+        <label class="form-check-label" for="toggleConfetti">Konfeti</label>
+      </div>
       <div class="d-flex align-items-center gap-2">
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" role="switch" id="modeSwitch">
-          <label class="form-check-label" for="modeSwitch">Light / Dark</label>
-        </div>
-        <button class="btn btn-sm btn-outline-secondary" id="btnSample">Isi Contoh</button>
+        <label for="speed" class="form-label m-0">Lama Spin</label>
+        <input type="range" class="form-range" id="speed" min="1500" max="7000" step="100" value="3000" style="width:220px">
       </div>
+      <button id="btnUndo" type="button" class="btn btn-outline-secondary" title="Undo terakhir" disabled>
+        Undo
+      </button>
+      <button id="btnSpin" type="button" class="btn btn-primary px-4 fw-semibold" disabled>
+        SPIN
+      </button>
     </div>
+  </div>
 
-    <div class="grid grid-cols">
-      <!-- Controls -->
-      <div class="card">
-        <div class="card-header py-2"><strong>📋 Data & Pengaturan</strong></div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label class="form-label">Peserta (Excel <em>atau</em> Tempel Teks)</label>
-            <div class="d-flex gap-2 flex-wrap mb-2">
-              <input type="file" id="filePeserta" accept=".xlsx,.xls" class="form-control" style="max-width:280px">
-              <button class="btn btn-outline-primary btn-sm" id="downloadTemplate">Unduh Template Excel</button>
-            </div>
-            <textarea class="form-control" id="taPeserta" rows="6" placeholder="NPK, Nama, Department\n1001, Andi, Finance\n1002, Budi, Sales"></textarea>
-            <div class="form-text">Kolom wajib: <b>NPK, Nama, Department</b>. Pakai koma sebagai pemisah kolom.</div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Hadiah</label>
-            <div class="d-flex gap-2 flex-wrap mb-2">
-              <input type="file" id="fileHadiah" accept=".xlsx,.xls" class="form-control" style="max-width:280px">
-              <button class="btn btn-outline-primary btn-sm" id="downloadTemplateHadiah">Unduh Template Hadiah</button>
-            </div>
-            <textarea class="form-control" id="taHadiah" rows="5" placeholder="Nama Hadiah | Jumlah
-Motor | 1
-Kulkas | 1
-Rumah | 2
-TV | 5
-Lemari | 1"></textarea>
-            <div class="form-text">Isi lewat Excel <em>atau</em> tempel teks. Format baris: <b>Nama Hadiah | Jumlah</b>. Pada roda hanya tampil nama unik agar tidak penuh. Pengacakan mempertimbangkan jumlah tersisa.</div>
-          </div>
-
-          <div class="mb-3">
-            <label for="speed" class="form-label">Kecepatan Putar</label>
-            <input type="range" class="form-range" min="1" max="10" value="7" id="speed">
-            <div class="small text-muted">Semakin tinggi semakin cepat & momentum lebih panjang.</div>
-          </div>
-
-          <div class="d-grid gap-2">
-            <button class="btn btn-brand" id="applyData">Terapkan Data</button>
-            <button class="btn btn-outline-secondary" id="resetAll">Reset Semua</button>
-          </div>
-
-          <hr>
-          <div>
-            <div class="mb-2"><strong>Status:</strong></div>
-            <div id="status" class="small">Belum ada data.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Wheel + Winners -->
-      <div class="card">
-        <div class="card-header py-2 d-flex align-items-center justify-content-between">
-          <strong>🛞 Roda Undian</strong>
-          <div class="small" id="legend"></div>
-        </div>
-        <div class="card-body">
-          <div class="wheel-wrap mb-3">
-            <div class="pointer"></div>
-            <canvas id="wheel" width="1000" height="1000"></canvas>
-            <div class="center-arrow"></div>
-          </div>
-          <div class="wheel-btns mb-3">
-            <button class="btn btn-success" id="btnSpin">SPIN</button>
-            <button class="btn btn-outline-primary" id="btnExport">Export Pemenang (Excel)</button>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle" id="tblWinners">
-              <thead>
-                <tr><th>#</th><th>Hadiah</th><th>NPK</th><th>Nama</th><th>Department</th><th>Waktu</th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+  <!-- Stage: Wheel  -->
+  <div class="stage">
+    <div class="wheel-wrap">
+      <div class="wheel-outer">
+        <canvas id="wheel" width="1000" height="1000" aria-label="Roda Undian" role="img"></canvas>
+        <div class="pointer" aria-hidden="true">
+          <!-- SVG panah pusat -->
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#111"/>
+                <stop offset="1" stop-color="#555"/>
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="18" fill="url(#g)" stroke="#fff" stroke-width="2"/>
+            <path d="M50 2 L58 22 L42 22 Z" fill="#dc3545" stroke="#fff" stroke-width="2"/>
+          </svg>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Winner Overlay -->
-  <div class="winner-overlay" id="winnerOverlay">
-    <div class="winner-card">
-      <div class="d-flex align-items-center justify-content-between mb-2">
-        <div class="winner-title h4 m-0">🎉 Selamat kepada pemenang!</div>
-        <button class="btn btn-sm btn-outline-secondary" id="closeOverlay">Tutup</button>
+  <!-- Side: Config + Info + History -->
+  <div class="side p-3">
+    <div class="accordion" id="configAccordion">
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="headingImport">
+          <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseImport" aria-expanded="true" aria-controls="collapseImport">
+            Import / Export Data
+          </button>
+        </h2>
+        <div id="collapseImport" class="accordion-collapse collapse show" aria-labelledby="headingImport" data-bs-parent="#configAccordion">
+          <div class="accordion-body">
+            <div class="row g-2 align-items-end">
+              <div class="col-12">
+                <label class="form-label fw-semibold">Peserta (.xlsx / .csv)</label>
+              </div>
+              <div class="col-8">
+                <input type="file" id="filePeserta" accept=".xlsx,.csv" class="form-control">
+              </div>
+              <div class="col-4 d-grid gap-2">
+                <button class="btn btn-outline-secondary" id="btnDownloadPesertaSample">Unduh Contoh</button>
+                <button class="btn btn-outline-danger" id="btnClearPeserta">Bersihkan</button>
+              </div>
+              <div class="col-12 mt-2">
+                <textarea id="pastePeserta" class="form-control" rows="3" placeholder="Paste cepat peserta: NPK,Nama,Department per baris (tak perlu header)"></textarea>
+                <div class="d-grid mt-1"><button class="btn btn-sm btn-outline-primary" id="btnParsePeserta">Parse Peserta</button></div>
+              </div>
+              <hr class="my-2"/>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Hadiah (.xlsx / .csv)</label>
+              </div>
+              <div class="col-8">
+                <input type="file" id="fileHadiah" accept=".xlsx,.csv" class="form-control">
+              </div>
+              <div class="col-4 d-grid gap-2">
+                <button class="btn btn-outline-secondary" id="btnDownloadHadiahSample">Unduh Contoh</button>
+                <button class="btn btn-outline-danger" id="btnClearHadiah">Bersihkan</button>
+              </div>
+              <div class="col-12 mt-2">
+                <textarea id="pasteHadiah" class="form-control" rows="3" placeholder="Paste cepat hadiah: NamaHadiah,Jumlah,WarnaHex? per baris (tak perlu header)"></textarea>
+                <div class="d-grid mt-1"><button class="btn btn-sm btn-outline-primary" id="btnParseHadiah">Parse Hadiah</button></div>
+              </div>
+              <hr class="my-2"/>
+              <div class="col-12 d-grid">
+                <button class="btn btn-success" id="btnExportWinners">Export Winners (.xlsx / .csv)</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div id="winnerList"></div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="headingSummary">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSummary" aria-expanded="false" aria-controls="collapseSummary">
+            Ringkasan & Validasi
+          </button>
+        </h2>
+        <div id="collapseSummary" class="accordion-collapse collapse" aria-labelledby="headingSummary" data-bs-parent="#configAccordion">
+          <div class="accordion-body">
+            <div class="d-flex flex-column gap-2">
+              <div class="stat-pill"><span class="badge text-bg-primary">Peserta unik</span><span id="statPeserta">0</span></div>
+              <div class="stat-pill"><span class="badge text-bg-warning">Total hadiah</span><span id="statHadiah">0</span></div>
+              <div class="stat-pill"><span class="badge text-bg-success">Hadiah tersisa</span><span id="statHadiahSisa">0</span></div>
+              <div class="stat-pill"><span class="badge text-bg-secondary">Peserta belum menang</span><span id="statUnwon">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="headingHistory">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseHistory" aria-expanded="false" aria-controls="collapseHistory">
+            Hasil & Riwayat
+          </button>
+        </h2>
+        <div id="collapseHistory" class="accordion-collapse collapse" aria-labelledby="headingHistory" data-bs-parent="#configAccordion">
+          <div class="accordion-body">
+            <div class="history-wrap">
+              <table class="table table-sm align-middle table-striped table-fixed" id="tblHistory">
+                <thead>
+                  <tr>
+                    <th>Waktu</th>
+                    <th>Hadiah</th>
+                    <th>Jumlah</th>
+                    <th>Nama / NPK / Dept</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <canvas id="confetti"></canvas>
+</div>
 
-  <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script>
-  // ======== Theme Toggle ========
-  const modeSwitch = document.getElementById('modeSwitch');
-  const rootHTML = document.documentElement;
-  modeSwitch.addEventListener('change', () => {
-    const theme = modeSwitch.checked ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-bs-theme', theme);
+<!-- Modal Winner Overlay -->
+<div class="modal fade" id="winnerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Pemenang</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="winnerSummary" class="mb-2"></div>
+        <div class="table-responsive" style="max-height:40vh">
+          <table class="table table-sm">
+            <thead><tr><th>#</th><th>Nama</th><th>NPK</th><th>Department</th></tr></thead>
+            <tbody id="winnerList"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+        <button type="button" class="btn btn-primary" id="btnSaveContinue">Simpan & Lanjut</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Libs: Bootstrap, XLSX, Confetti -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+<script>
+/**
+ * =============================
+ *  STATE & PERSISTENCE LAYER
+ * =============================
+ */
+const LS_KEY = 'spinwheel_state_v1';
+const defaultState = {
+  theme: 'light',
+  sound: true,
+  confetti: true,
+  participants: [], // {npk, nama, dept, won:boolean}
+  prizes: [],       // {name, qty, color, remain}
+  history: [],      // {ts, prize, qty, winners:[participant]}
+};
+let state = loadState();
+let undoBuffer = null; // one-level undo snapshot
+
+function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function loadState(){
+  try{ const s = JSON.parse(localStorage.getItem(LS_KEY)); if(s) return s; }catch{}
+  return structuredClone(defaultState);
+}
+function resetParticipants(){ state.participants = []; saveState(); refreshStats(); }
+function resetPrizes(){ state.prizes = []; saveState(); refreshStats(); drawWheel(); }
+
+/**
+ * =============================
+ *  UTILITIES
+ * =============================
+ */
+const rng = (maxExclusive)=>{
+  // crypto RNG uniform [0, max)
+  const buf = new Uint32Array(1); crypto.getRandomValues(buf);
+  return Math.floor(buf[0] / 2**32 * maxExclusive);
+};
+const rngFloat = ()=>{ const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0]/2**32; };
+
+function nowTS(){ return new Date().toISOString(); }
+
+function dedupeParticipants(list){
+  const seen = new Set();
+  const out = [];
+  for(const p of list){
+    if(!p.npk) continue;
+    if(seen.has(p.npk)) continue; // ambil entri pertama, sisanya diabaikan
+    seen.add(p.npk);
+    out.push({...p, won: !!p.won});
+  }
+  return out;
+}
+
+function normalizePrizes(list){
+  const byName = new Map();
+  for(const it of list){
+    const name = (it.name||'').trim();
+    const qty = Math.max(0, Number(it.qty||0)|0);
+    if(!name || qty<=0) continue;
+    const color = it.color ? it.color.trim() : colorFromString(name);
+    if(!byName.has(name)) byName.set(name, {name, qty:0, color, remain:0});
+    const obj = byName.get(name);
+    obj.qty += qty; obj.remain += qty; // gabungkan item berganda
+    if(!it.color) obj.color = colorFromString(name); // konsistensi warna
+  }
+  return [...byName.values()];
+}
+
+function colorFromString(s){
+  // Deterministik: hash -> HSL -> hex
+  let h = 0; for(let i=0;i<s.length;i++) h = Math.imul(31,h) + s.charCodeAt(i) | 0;
+  h = (h>>>0) % 360; const sat = 72, light = 55;
+  return hslToHex(h, sat, light);
+}
+function hslToHex(h,s,l){
+  s/=100;l/=100; const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let [r,g,b]=h<60?[c,x,0]:h<120?[x,c,0]:h<180?[0,c,x]:h<240?[0,x,c]:h<300?[x,0,c]:[c,0,x];
+  r=Math.round((r+m)*255); g=Math.round((g+m)*255); b=Math.round((b+m)*255);
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+function fmtTime(ts){ const d=new Date(ts); return d.toLocaleString(); }
+
+/**
+ * =============================
+ *  IMPORT / EXPORT HELPERS
+ * =============================
+ */
+async function parseFile(file, type){
+  const ext = file.name.split('.').pop().toLowerCase();
+  const buf = await file.arrayBuffer();
+  if(ext==='csv'){
+    const text = new TextDecoder().decode(buf);
+    return parseCSV(text);
+  } else { // xlsx
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(ws, {defval:''});
+  }
+}
+
+function parseCSV(text){
+  // sederhana, split baris + koma (tidak menangani koma quoted kompleks)
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if(!lines.length) return [];
+  const maybeHeader = lines[0].split(',');
+  let hasHeader = false;
+  const head = maybeHeader.map(h=>h.trim().toLowerCase());
+  if(head.includes('npk')||head.includes('namahadiah')) hasHeader=true;
+  const rows = hasHeader? lines.slice(1): lines;
+  return rows.map(r=>{
+    const cols = r.split(',').map(c=>c.trim());
+    return cols;
   });
+}
 
-  // ======== State ========
-  let participants = []; // {npk, nama, dept, won?:bool}
-  let prizes = [];       // [{name, qty}]
-  let prizeMap = new Map(); // name-> {qty}
-  let colorMap = new Map(); // name->color
-  let winners = [];      // rows for table
-
-  const wheel = document.getElementById('wheel');
-  const ctx = wheel.getContext('2d');
-  const statusEl = document.getElementById('status');
-  const legendEl = document.getElementById('legend');
-
-  // ======== Helpers ========
-  function parseParticipantsText(text){
-    const rows = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
-    const out = [];
-    for(const r of rows){
-      const cols = r.split(',').map(c=>c.trim());
-      if(cols.length >= 3){
-        out.push({npk: cols[0], nama: cols[1], dept: cols[2], won:false});
-      }
+function parseParticipantsFromAny(data){
+  // data bisa array of array (CSV tanpa header), atau array of objects (XLSX)
+  const out = [];
+  if(!data) return out;
+  if(Array.isArray(data) && data.length && Array.isArray(data[0])){
+    for(const row of data){ if(row.length<2) continue; out.push({npk: String(row[0]||''), nama: row[1]||'', dept: row[2]||''}); }
+  } else {
+    for(const obj of data){
+      const npk = String(obj.NPK ?? obj.npk ?? obj["NPK"] ?? '');
+      const nama = String(obj.Nama ?? obj.nama ?? obj["Nama"] ?? '');
+      const dept = String(obj.Department ?? obj.department ?? obj["Department"] ?? '');
+      if(npk && nama) out.push({npk, nama, dept});
     }
-    return out;
   }
-  function parsePrizesText(text){
-    const rows = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
-    const out = [];
-    for(const r of rows){
-      const [name, qtyStr] = r.split('|').map(x=>x?.trim());
-      if(name && qtyStr){
-        const qty = Math.max(0, parseInt(qtyStr,10)||0);
-        if(qty>0) out.push({name, qty});
-      }
-    }
-    return out;
-  }
-  function seedColorFor(str){
-    // stable color per prize using hash -> HSL palette
-    let h=0; for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i))>>>0; }
-    const hue = h % 360;
-    return `hsl(${hue}, 70%, 55%)`;
-  }
-  function buildMaps(){
-    prizeMap.clear(); colorMap.clear();
-    for(const p of prizes){
-      prizeMap.set(p.name, {qty:p.qty});
-      if(!colorMap.has(p.name)) colorMap.set(p.name, seedColorFor(p.name));
+  return out;
+}
+
+function parsePrizesFromAny(data){
+  const out=[];
+  if(!data) return out;
+  if(Array.isArray(data) && data.length && Array.isArray(data[0])){
+    for(const row of data){ if(row.length<2) continue; out.push({name: row[0]||'', qty: row[1]||0, color: row[2]||''}); }
+  } else {
+    for(const obj of data){
+      const name = String(obj.NamaHadiah ?? obj.namaHadiah ?? obj.name ?? obj["NamaHadiah"] ?? '');
+      const qty = Number(obj.Jumlah ?? obj.jumlah ?? obj.qty ?? obj["Jumlah"] ?? 0) || 0;
+      const color = String(obj.WarnaHex ?? obj.warnaHex ?? obj.color ?? obj["WarnaHex"] ?? '');
+      if(name && qty>0) out.push({name, qty, color});
     }
   }
-  function distinctPrizeNames(){
-    return [...new Set(prizes.map(p=>p.name))];
+  return out;
+}
+
+function exportWinners(){
+  if(!state.history.length){ alert('Belum ada pemenang.'); return; }
+  const rows = [];
+  for(const item of state.history){
+    const base = {Waktu: fmtTime(item.ts), Hadiah: item.prize, Jumlah: item.qty};
+    if(item.winners.length===0){ rows.push(base); continue; }
+    item.winners.forEach(w=>{
+      rows.push({...base, NPK: w.npk, Nama: w.nama, Department: w.dept});
+    });
   }
-  function totalRemainingUnits(){
-    let t=0; for(const [n, obj] of prizeMap){ t += obj.qty; } return t;
+  // XLSX
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Winners');
+  const fnameX = `winners_${new Date().toISOString().replace(/[:.]/g,'-')}.xlsx`;
+  XLSX.writeFile(wb, fnameX);
+  // CSV
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = fnameX.replace('.xlsx','.csv'); a.click(); URL.revokeObjectURL(a.href);
+}
+
+function downloadSample(kind){
+  if(kind==='peserta'){
+    const rows = [
+      {NPK:'1001', Nama:'Budi Santoso', Department:'Finance'},
+      {NPK:'1002', Nama:'Siti Aminah', Department:'HR'},
+      {NPK:'1003', Nama:'Andi Wijaya', Department:'IT'}
+    ];
+    const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Peserta'); XLSX.writeFile(wb, 'peserta-sample.xlsx');
+  } else {
+    const rows = [
+      {NamaHadiah:'Motor', Jumlah:1, WarnaHex:'#D81B60'},
+      {NamaHadiah:'Kulkas', Jumlah:1, WarnaHex:'#1E88E5'},
+      {NamaHadiah:'Rumah',  Jumlah:2, WarnaHex:'#43A047'},
+      {NamaHadiah:'TV',     Jumlah:5, WarnaHex:'#FB8C00'},
+      {NamaHadiah:'Lemari', Jumlah:1, WarnaHex:'#8E24AA'}
+    ];
+    const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Hadiah'); XLSX.writeFile(wb, 'hadiah-sample.xlsx');
   }
-  function remainingPrizeEntries(){
-    return [...prizeMap].filter(([_,v])=>v.qty>0);
+}
+
+/**
+ * =============================
+ *  WHEEL RENDERING (Canvas)
+ *  - Satu sektor per jenis hadiah
+ *  - Sudut proporsional stok tersisa
+ *  - Warna konsisten
+ * =============================
+ */
+const wheel = document.getElementById('wheel');
+const ctx = wheel.getContext('2d');
+let rotation = -Math.PI/2; // 12 o'clock reference
+let spinning = false;
+
+function getActivePrizes(){ return state.prizes.filter(p=>p.remain>0); }
+
+function computeSectors(){
+  const active = getActivePrizes();
+  const total = active.reduce((a,b)=>a+b.remain,0);
+  let acc = 0; const sectors = [];
+  for(const p of active){
+    const frac = p.remain / total; const start = acc; const end = acc + frac * Math.PI*2;
+    sectors.push({name:p.name, color:p.color, startAngle:start, endAngle:end, remain:p.remain});
+    acc = end;
   }
+  return sectors;
+}
 
-  // ======== Wheel Drawing (Canvas) ========
-  let rotation = 0; // radians
-  function drawWheel(){
-    const names = distinctPrizeNames();
-    const N = names.length || 1;
-    const cx = wheel.width/2, cy = wheel.height/2; const r = wheel.width/2 - 10;
-    ctx.clearRect(0,0,wheel.width,wheel.height);
+function drawWheel(){
+  const size = wheel.width; const r = size/2; ctx.clearRect(0,0,size,size);
+  ctx.save(); ctx.translate(r,r); ctx.rotate(rotation);
+  const sectors = computeSectors();
+  // disk background
+  ctx.beginPath(); ctx.arc(0,0,r-4,0,Math.PI*2); ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bs-tertiary-bg')||'#f8f9fa'; ctx.fill();
 
-    const arc = 2*Math.PI / N;
-    for(let i=0;i<N;i++){
-      const name = names[i];
-      const color = colorMap.get(name) || '#999';
-      const start = rotation + i*arc;
-      const end = start + arc;
-      // slice
-      ctx.beginPath();
-      ctx.moveTo(cx,cy);
-      ctx.arc(cx,cy,r,start,end);
-      ctx.closePath();
-      ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 4; ctx.stroke();
+  // sectors
+  sectors.forEach((s,i)=>{
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r-8, s.startAngle, s.endAngle); ctx.closePath();
+    ctx.fillStyle = s.color; ctx.fill();
+    // border
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
 
-      // label
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(start + arc/2);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 34px system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans';
-      ctx.fillText(name, r-20, 10);
-      ctx.restore();
-    }
-
-    // center circle
-    ctx.beginPath();
-    ctx.arc(cx,cy,70,0,2*Math.PI);
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-bg') || '#fff';
-    ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.stroke();
-
-    // center text
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-color') || '#000';
-    ctx.font = '600 18px system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText('SPIN', cx, cy+6);
-  }
-
-  // Legend
-  function renderLegend(){
-    legendEl.innerHTML = distinctPrizeNames().map(n=>{
-      const c = colorMap.get(n)||'#999';
-      return `<span class="badge-dot me-2"><span class="dot" style="background:${c}"></span>${n} <small class="text-muted">(sisa ${prizeMap.get(n)?.qty||0})</small></span>`;
-    }).join('');
-  }
-
-  // ======== Spin Logic ========
-  let spinning=false, animId=null; 
-  let targetPrizeName=null, targetAngle=null; 
-  function choosePrizeWeighted(){
-    const entries = remainingPrizeEntries();
-    const total = entries.reduce((a,[,v])=>a+v.qty,0);
-    let rnd = Math.random()*total;
-    for(const [name, v] of entries){
-      if(rnd < v.qty) return name; rnd -= v.qty;
-    }
-    return entries[0]?.[0] || null;
-  }
-  function computeTargetAngleForPrize(name){
-    const names = distinctPrizeNames();
-    const idx = names.indexOf(name); if(idx<0) return rotation; 
-    const arc = 2*Math.PI / names.length;
-    const sliceCenter = idx*arc + arc/2;
-    // pointer is at angle -Math.PI/2 (top). We want rotation so that sliceCenter aligns to that.
-    // We rotate canvas, so visible pointer fixed at top; need target rotation so (sliceCenter + rotation) aligns to -PI/2
-    const desired = -Math.PI/2 - (sliceCenter);
-    return desired;
-  }
-  function spin(){
-    if(spinning) return; 
-    if(totalRemainingUnits()===0){ alert('Semua hadiah sudah habis.'); return; }
-    const available = participants.filter(p=>!p.won);
-    if(available.length===0){ alert('Semua peserta sudah menang.'); return; }
-
-    const prizeName = choosePrizeWeighted();
-    targetPrizeName = prizeName;
-    targetAngle = computeTargetAngleForPrize(prizeName);
-
-    const speedVal = +document.getElementById('speed').value; // 1..10
-    const spinTime = 2000 + speedVal*250; // duration accelerate
-    const extraRot = (4 + Math.floor(speedVal/2)) * 2*Math.PI; // extra turns
-
-    const start = performance.now();
-    const startRot = rotation;
-    const deltaToTarget = normalizeAngle(targetAngle - startRot);
-
-    const endRot = startRot + extraRot + deltaToTarget; // overspin + land exactly
-
-    spinning = true;
-    function easeOutCubic(t){return 1 - Math.pow(1 - t, 3);}
-    function frame(ts){
-      const t = Math.min(1, (ts - start)/(spinTime + speedVal*500));
-      const eased = easeOutCubic(t);
-      rotation = startRot + (endRot - startRot)*eased;
-      drawWheel();
-      if(t < 1){ animId = requestAnimationFrame(frame); }
-      else { spinning=false; onSpinEnd(); }
-    }
-    animId = requestAnimationFrame(frame);
-  }
-  function normalizeAngle(a){
-    while(a>Math.PI) a-=2*Math.PI; while(a<-Math.PI) a+=2*Math.PI; return a;
-  }
-
-  function onSpinEnd(){
-    if(!targetPrizeName) return;
-    const remainQty = prizeMap.get(targetPrizeName)?.qty || 0;
-    if(remainQty<=0){ renderLegend(); return; }
-
-    // Number of winners = remaining qty of the selected prize, bounded by available participants
-    const available = participants.filter(p=>!p.won);
-    const k = Math.min(remainQty, available.length);
-    const selected = pickK(available, k);
-
-    // Mark winners and reduce prize qty to 0 (given per requirement: berhenti di TV 7x -> keluar 7 nama langsung)
-    for(const w of selected){ w.won = true; }
-    prizeMap.get(targetPrizeName).qty -= k; // potentially 0
-
-    // Add to table & overlay
-    pushWinners(targetPrizeName, selected);
-    renderLegend();
-    launchConfetti();
-    showOverlay(targetPrizeName, selected);
-
-    // If all prizes done -> notify
-    if(totalRemainingUnits()===0){ setStatus('🎁 Semua hadiah telah dibagikan.'); }
-    else setStatus(`Hadiah "${targetPrizeName}" dibagikan sebanyak ${k}. Sisa total hadiah: ${totalRemainingUnits()}.`);
-  }
-  function pickK(arr, k){
-    const copy = arr.slice();
-    for(let i=copy.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [copy[i],copy[j]]=[copy[j],copy[i]]; }
-    return copy.slice(0,k);
-  }
-
-  // ======== Winners Table & Overlay ========
-  const winnersTbody = document.querySelector('#tblWinners tbody');
-  function pushWinners(prizeName, persons){
-    const now = new Date();
-    for(const p of persons){
-      winners.push({prize: prizeName, ...p, time: now.toLocaleString()});
-    }
-    rebuildWinnersTable();
-  }
-  function rebuildWinnersTable(){
-    winnersTbody.innerHTML = winners.map((w, i)=>`
-      <tr>
-        <td>${i+1}</td>
-        <td>${escapeHtml(w.prize)}</td>
-        <td>${escapeHtml(w.npk)}</td>
-        <td>${escapeHtml(w.nama)}</td>
-        <td>${escapeHtml(w.dept)}</td>
-        <td>${escapeHtml(w.time)}</td>
-      </tr>`).join('');
-  }
-  function showOverlay(prizeName, persons){
-    const overlay = document.getElementById('winnerOverlay');
-    const list = document.getElementById('winnerList');
-    list.innerHTML = `
-      <div class="mb-2"><span class="badge bg-success">${escapeHtml(prizeName)}</span> × ${persons.length}</div>
-      <div class="table-responsive"><table class="table table-sm">
-        <thead><tr><th>#</th><th>NPK</th><th>Nama</th><th>Department</th></tr></thead>
-        <tbody>${persons.map((p,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(p.npk)}</td><td>${escapeHtml(p.nama)}</td><td>${escapeHtml(p.dept)}</td></tr>`).join('')}</tbody>
-      </table></div>`;
-    overlay.style.display = 'flex';
-  }
-  document.getElementById('closeOverlay').onclick = ()=>{
-    document.getElementById('winnerOverlay').style.display = 'none';
-  };
-
-  // ======== Confetti ========
-  const confettiCanvas = document.getElementById('confetti');
-  const cctx = confettiCanvas.getContext('2d');
-  function launchConfetti(){
-    confettiCanvas.width = innerWidth; confettiCanvas.height = innerHeight; confettiCanvas.style.display='block';
-    const pieces = Array.from({length: 180}, ()=>({
-      x: Math.random()*innerWidth,
-      y: -20 - Math.random()*innerHeight*0.4,
-      w: 6 + Math.random()*6,
-      h: 10 + Math.random()*12,
-      rot: Math.random()*Math.PI,
-      velY: 2 + Math.random()*4,
-      velX: -2 + Math.random()*4,
-      color: `hsl(${Math.floor(Math.random()*360)}, 90%, 60%)`
-    }));
-    const start = performance.now();
-    function frame(ts){
-      const t = (ts-start)/1000;
-      cctx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height);
-      for(const p of pieces){
-        p.x += p.velX; p.y += p.velY; p.rot += 0.08;
-        cctx.save(); cctx.translate(p.x, p.y); cctx.rotate(p.rot);
-        cctx.fillStyle = p.color; cctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
-        cctx.restore();
-      }
-      if(t < 3){ requestAnimationFrame(frame); }
-      else { confettiCanvas.style.display='none'; }
-    }
-    requestAnimationFrame(frame);
-  }
-
-  // ======== Excel Import/Export ========
-  document.getElementById('filePeserta').addEventListener('change', (e)=>{
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, {defval:''});
-      const rows = data.map(r=>`${r.NPK||r.npk||''}, ${r.Nama||r.nama||''}, ${r.Department||r.Dept||r.department||''}`)
-                       .filter(s=>s.replace(/[,:\s]/g,'').length>0);
-      document.getElementById('taPeserta').value = rows.join('
-');
-      setStatus(`Terbaca ${rows.length} baris peserta dari Excel.`);
-    };
-    reader.readAsArrayBuffer(file);
-  });
-  // Import Excel Hadiah
-  document.getElementById('fileHadiah').addEventListener('change', (e)=>{
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, {defval:''});
-      const rows = data.map(r=>{
-        const name = r.Hadiah || r.Nama || r.Prize || r.hadiah || r.nama || r.prize || '';
-        const qty  = r.Jumlah || r.Qty || r.Quantity || r.jumlah || r.qty || r.quantity || '';
-        const qn = parseInt(qty,10);
-        if(name && !isNaN(qn) && qn>0) return `${name} | ${qn}`; else return '';
-      }).filter(Boolean);
-      document.getElementById('taHadiah').value = rows.join('
-');
-      setStatus(`Terbaca ${rows.length} baris hadiah dari Excel.`);
-    };
-    reader.readAsArrayBuffer(file);
-  });
-    reader.onload = (ev)=>{
-      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws, {defval:''});
-      const rows = data.map(r=>`${r.NPK||r.npk||''}, ${r.Nama||r.nama||''}, ${r.Department||r.Dept||r.department||''}`)
-                       .filter(s=>s.replace(/[,\s]/g,'').length>0);
-      document.getElementById('taPeserta').value = rows.join('\n');
-      setStatus(`Terbaca ${rows.length} baris dari Excel.`);
-    };
-    reader.readAsArrayBuffer(file);
-  });
-  document.getElementById('btnExport').addEventListener('click', ()=>{
-    if(!winners.length){ alert('Belum ada pemenang.'); return; }
-    const ws = XLSX.utils.json_to_sheet(winners.map((w,i)=>({
-      No: i+1,
-      Hadiah: w.prize,
-      NPK: w.npk,
-      Nama: w.nama,
-      Department: w.dept,
-      Waktu: w.time
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Pemenang');
-
-    // Sheet 2: Sisa Hadiah
-    const remain = [...prizeMap].map(([name,obj])=>({Hadiah:name, Sisa: obj.qty}));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(remain), 'Sisa Hadiah');
-
-    // Sheet 3: Sisa Peserta
-    const remainingPeople = participants.filter(p=>!p.won);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(remainingPeople.map(p=>({NPK:p.npk,Nama:p.nama,Department:p.dept}))), 'Sisa Peserta');
-
-    XLSX.writeFile(wb, 'hasil-undian.xlsx');
-  });
-  document.getElementById('downloadTemplate').addEventListener('click', ()=>{
-    const ws = XLSX.utils.aoa_to_sheet([["NPK","Nama","Department"],["1001","Andi","Finance"],["1002","Budi","Sales"]]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Peserta Template');
-    XLSX.writeFile(wb, 'template-peserta.xlsx');
-  });
-  document.getElementById('downloadTemplateHadiah').addEventListener('click', ()=>{
-    const ws = XLSX.utils.aoa_to_sheet([["Hadiah","Jumlah"],["Motor",1],["Kulkas",1],["Rumah",2],["TV",5],["Lemari",1]]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Hadiah Template');
-    XLSX.writeFile(wb, 'template-hadiah.xlsx');
-  });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Peserta Template');
-    XLSX.writeFile(wb, 'template-peserta.xlsx');
+    // label rotasi tengah sektor
+    const mid = (s.startAngle + s.endAngle)/2; ctx.save(); ctx.rotate(mid); ctx.translate((r-8)*0.62, 0);
+    ctx.rotate(Math.PI/2); // tegak
+    ctx.fillStyle = '#fff';
+    ctx.font = '600 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+    const label = `${s.name}${s.remain>1?` ×${s.remain}`:''}`;
+    // background label
+    const metrics = ctx.measureText(label); const pad=6, lh=22; const w=metrics.width+pad*2;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(-w/2, -lh/2, w, lh);
+    ctx.fillStyle = '#fff'; ctx.fillText(label, -metrics.width/2, 7);
+    ctx.restore();
   });
 
-  // ======== Apply / Reset / Samples ========
-  document.getElementById('applyData').addEventListener('click', ()=>{
-    const pText = document.getElementById('taPeserta').value;
-    const hText = document.getElementById('taHadiah').value;
-    const p = parseParticipantsText(pText);
-    const h = parsePrizesText(hText);
-    if(!p.length || !h.length){
-      alert('Mohon isi Peserta dan Hadiah dengan benar.'); return;
-    }
-    participants = p; prizes = h; buildMaps();
-    drawWheel(); renderLegend();
-    setStatus(`Peserta: ${participants.length} | Total unit hadiah: ${totalRemainingUnits()} | Jenis hadiah: ${distinctPrizeNames().length}`);
-  });
-  document.getElementById('resetAll').addEventListener('click', ()=>{
-    if(spinning) return;
-    participants = participants.map(p=>({...p, won:false}));
-    prizes = prizes.map(p=>({...p})); buildMaps(); winners=[]; rebuildWinnersTable();
-    drawWheel(); renderLegend(); setStatus('Sudah di-reset.');
-  });
-  document.getElementById('btnSample').addEventListener('click', ()=>{
-    document.getElementById('taPeserta').value = `NPK, Nama, Department\n1001, Andi, Finance\n1002, Budi, Sales\n1003, Citra, HR\n1004, Dedi, IT\n1005, Evi, Marketing\n1006, Fajar, GA\n1007, Gita, QA\n1008, Hasan, Legal\n1009, Intan, RnD\n1010, Joko, Purchasing`;
-    document.getElementById('taHadiah').value = `Motor | 1\nKulkas | 1\nRumah | 2\nTV | 5\nLemari | 1`;
-  });
+  // rim & center
+  ctx.beginPath(); ctx.arc(0,0,r-4,0,Math.PI*2); ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=6; ctx.stroke();
+  ctx.beginPath(); ctx.arc(0,0,30,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.stroke();
 
-  // ======== Spin Button ========
+  ctx.restore();
+}
+
+function pointToPrize(targetSector){
+  // hitung sudut global yang diperlukan agar pointer (atas) berhenti pada tengah sektor
+  const sectors = computeSectors();
+  const s = sectors[targetSector]; if(!s) return rotation;
+  const mid = (s.startAngle + s.endAngle)/2; // di koordinat wheel sebelum rotasi
+  // Kita ingin mid berada pada -PI/2 (12 o'clock) setelah rotasi baru
+  const targetRotation = -Math.PI/2 - mid; 
+  return targetRotation;
+}
+
+/**
+ * =============================
+ *  CORE DRAW LOGIC (Weighted)
+ *  - Pilih hadiah berdasar bobot stok tersisa
+ *  - Tentukan sudut target
+ *  - Saat selesai: pilih pemenang unik = min(stok, peserta sisa)
+ * =============================
+ */
+function choosePrizeIndex(){
+  const active = getActivePrizes();
+  const total = active.reduce((a,b)=>a+b.remain,0);
+  if(total<=0) return -1;
+  let rnum = rng(total); // integer [0,total)
+  for(let i=0;i<active.length;i++){
+    const c = active[i];
+    if(rnum < c.remain) return i; rnum -= c.remain;
+  }
+  return active.length-1;
+}
+
+function pickWinnersForPrize(prize){
+  const available = state.participants.filter(p=>!p.won);
+  const need = Math.min(prize.remain, available.length);
+  const chosen = [];
+  for(let i=0;i<need;i++){
+    const idx = rng(available.length);
+    const [p] = available.splice(idx,1);
+    p.won = true; chosen.push({...p});
+  }
+  prize.remain -= chosen.length;
+  return chosen;
+}
+
+async function spin(){
+  if(spinning) return; if(getActivePrizes().length===0){ alert('Tidak ada hadiah tersisa.'); return; }
+  if(state.participants.filter(p=>!p.won).length===0){ alert('Tidak ada peserta tersisa.'); return; }
+  // snapshot untuk undo
+  undoBuffer = JSON.stringify(state);
+  document.getElementById('btnUndo').disabled = false;
+
+  spinning = true; setControlsDisabled(true);
+  const spinMs = Number(document.getElementById('speed').value);
+  const chosenIdx = choosePrizeIndex();
+  const sectors = computeSectors();
+  // map chosenIdx (pada active prizes) ke indeks sektor yang sama
+  const targetRotation = pointToPrize(chosenIdx);
+  // tambahkan keliling ekstra agar animasi berputar beberapa kali
+  const extraTurns = 4 + Math.floor(rngFloat()*2); // 4-5 putaran
+  const start = rotation; const end = targetRotation - extraTurns * Math.PI*2;
+
+  const startTime = performance.now();
+  const easeOutCubic = t=>1- Math.pow(1-t,3);
+
+  let rafId;
+  function animate(ts){
+    const t = Math.min(1, (ts-startTime)/spinMs);
+    const eased = easeOutCubic(t);
+    rotation = start + (end-start)*eased;
+    drawWheel();
+    if(t<1){ rafId = requestAnimationFrame(animate); }
+    else { cancelAnimationFrame(rafId); onSpinEnd(chosenIdx); }
+  }
+  rafId = requestAnimationFrame(animate);
+}
+
+function onSpinEnd(chosenIdx){
+  const prize = getActivePrizes()[chosenIdx];
+  if(!prize){ spinning=false; setControlsDisabled(false); return; }
+  const winners = pickWinnersForPrize(prize);
+  // efek
+  if(state.confetti){ fireConfetti(); }
+  if(state.sound){ playWinSound(); }
+  // tampilkan overlay pemenang
+  showWinnersModal(prize.name, winners);
+  // update history (sementara simpan, final saat Simpan & Lanjut)
+  pendingResult = { ts: nowTS(), prize: prize.name, qty: winners.length, winners };
+  refreshStats(); drawWheel();
+}
+
+function fireConfetti(){
+  const duration = 1500; const end = Date.now() + duration;
+  (function frame(){
+    confetti({particleCount: 30, spread: 60, startVelocity: 35, origin: {x: Math.random(), y: 0}});
+    if(Date.now()<end) requestAnimationFrame(frame);
+  })();
+}
+
+function playWinSound(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='triangle'; o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime+0.02);
+    o.start(); o.frequency.exponentialRampToValueAtTime(440, ctx.currentTime+0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.2);
+    o.stop(ctx.currentTime+0.25);
+  }catch{}
+}
+
+let pendingResult = null;
+function showWinnersModal(prizeName, winners){
+  const sum = document.getElementById('winnerSummary');
+  sum.innerHTML = `<span class="winner-badge badge text-bg-success">${prizeName}</span> &middot; ${winners.length} pemenang`;
+  const tbody = document.getElementById('winnerList'); tbody.innerHTML='';
+  winners.forEach((w,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(w.nama)}</td><td>${escapeHtml(w.npk)}</td><td>${escapeHtml(w.dept)}</td>`;
+    tbody.appendChild(tr);
+  });
+  const modal = bootstrap.Modal.getOrCreateInstance('#winnerModal'); modal.show();
+}
+
+function pushHistory(item){ state.history.unshift(item); saveState(); renderHistory(); }
+
+function renderHistory(){
+  const tbody = document.querySelector('#tblHistory tbody'); tbody.innerHTML='';
+  for(const row of state.history){
+    const names = row.winners.map(w=>`${escapeHtml(w.nama)} / ${escapeHtml(w.npk)} / ${escapeHtml(w.dept||'')}`).join('<br>');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtTime(row.ts)}</td><td>${escapeHtml(row.prize)}</td><td>${row.qty}</td><td>${names}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function refreshStats(){
+  const unik = new Set(state.participants.map(p=>p.npk)).size;
+  const totalHadiah = state.prizes.reduce((a,b)=>a+b.qty,0);
+  const sisa = state.prizes.reduce((a,b)=>a+b.remain,0);
+  const unwon = state.participants.filter(p=>!p.won).length;
+  document.getElementById('statPeserta').textContent = unik;
+  document.getElementById('statHadiah').textContent = totalHadiah;
+  document.getElementById('statHadiahSisa').textContent = sisa;
+  document.getElementById('statUnwon').textContent = unwon;
+  document.getElementById('btnSpin').disabled = !(sisa>0 && unwon>0);
+}
+
+function setControlsDisabled(dis){
+  document.getElementById('btnSpin').disabled = dis || !(state.prizes.some(p=>p.remain>0) && state.participants.some(p=>!p.won));
+  document.getElementById('btnUndo').disabled = dis || !undoBuffer;
+  document.getElementById('speed').disabled = dis;
+}
+
+function escapeHtml(s){ return (s??'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+/**
+ * =============================
+ *  UNDO (1 tingkat)
+ * =============================
+ */
+function undo(){
+  if(!undoBuffer) return; state = JSON.parse(undoBuffer); undoBuffer=null; document.getElementById('btnUndo').disabled=true; saveState();
+  refreshStats(); drawWheel(); renderHistory();
+}
+
+/**
+ * =============================
+ *  INIT + EVENT WIRING
+ * =============================
+ */
+function applyTheme(){ document.documentElement.setAttribute('data-bs-theme', state.theme==='dark' ? 'dark' : 'light'); }
+
+function init(){
+  // theme & toggles
+  state.theme = state.theme||'light'; applyTheme();
+  document.getElementById('toggleTheme').checked = state.theme==='dark';
+  document.getElementById('toggleTheme').addEventListener('change', e=>{
+    state.theme = e.target.checked? 'dark':'light'; applyTheme(); saveState(); drawWheel();
+  });
+  document.getElementById('toggleSound').checked = !!state.sound;
+  document.getElementById('toggleSound').addEventListener('change', e=>{ state.sound = e.target.checked; saveState(); });
+  document.getElementById('toggleConfetti').checked = !!state.confetti;
+  document.getElementById('toggleConfetti').addEventListener('change', e=>{ state.confetti = e.target.checked; saveState(); });
+
+  // buttons
   document.getElementById('btnSpin').addEventListener('click', spin);
+  document.getElementById('btnUndo').addEventListener('click', undo);
+  document.getElementById('btnExportWinners').addEventListener('click', exportWinners);
+  document.getElementById('btnDownloadPesertaSample').addEventListener('click', ()=>downloadSample('peserta'));
+  document.getElementById('btnDownloadHadiahSample').addEventListener('click', ()=>downloadSample('hadiah'));
+  document.getElementById('btnClearPeserta').addEventListener('click', ()=>{ if(confirm('Hapus semua peserta?')){ resetParticipants(); }});
+  document.getElementById('btnClearHadiah').addEventListener('click', ()=>{ if(confirm('Hapus semua hadiah?')){ resetPrizes(); drawWheel(); }});
 
-  // ======== Utilities ========
-  function setStatus(msg){ statusEl.textContent = msg; }
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+  // file inputs
+  document.getElementById('filePeserta').addEventListener('change', async e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const raw = await parseFile(f, 'peserta');
+    const list = parseParticipantsFromAny(raw);
+    state.participants = dedupeParticipants(list);
+    saveState(); refreshStats();
+  });
+  document.getElementById('fileHadiah').addEventListener('change', async e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const raw = await parseFile(f, 'hadiah');
+    const list = parsePrizesFromAny(raw);
+    state.prizes = normalizePrizes(list);
+    saveState(); refreshStats(); drawWheel();
+  });
 
-  // Init default wheel visuals
-  // Preload some default colors & wheel so user sees UI
-  prizes = [{name:'Motor',qty:1},{name:'Kulkas',qty:1},{name:'Rumah',qty:2},{name:'TV',qty:5},{name:'Lemari',qty:1}];
-  buildMaps(); drawWheel(); renderLegend();
+  // paste quick
+  document.getElementById('btnParsePeserta').addEventListener('click', ()=>{
+    const text = document.getElementById('pastePeserta').value.trim(); if(!text) return;
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const arr = lines.map(l=>l.split(',').map(c=>c.trim()));
+    const list = parseParticipantsFromAny(arr);
+    state.participants = dedupeParticipants(list);
+    saveState(); refreshStats();
+  });
+  document.getElementById('btnParseHadiah').addEventListener('click', ()=>{
+    const text = document.getElementById('pasteHadiah').value.trim(); if(!text) return;
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const arr = lines.map(l=>l.split(',').map(c=>c.trim()));
+    const list = parsePrizesFromAny(arr);
+    state.prizes = normalizePrizes(list);
+    saveState(); refreshStats(); drawWheel();
+  });
 
-  </script>
+  // winners modal save
+  document.getElementById('btnSaveContinue').addEventListener('click', ()=>{
+    if(!pendingResult){ bootstrap.Modal.getOrCreateInstance('#winnerModal').hide(); return; }
+    pushHistory(pendingResult); pendingResult=null; bootstrap.Modal.getOrCreateInstance('#winnerModal').hide();
+    spinning=false; setControlsDisabled(false);
+  });
+
+  // Restore & initial draw
+  refreshStats(); renderHistory(); drawWheel(); setControlsDisabled(false);
+}
+
+// Kickoff
+window.addEventListener('load', init);
+
+/** HOOKS (untuk backend kelak) */
+// window.onWinnersCommitted = function(result){ /* panggil API */ }
+
+</script>
 </body>
 </html>
