@@ -76,10 +76,18 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Hadiah (bisa tempel teks)</label>
-            <textarea class="form-control" id="taHadiah" rows="5" placeholder="Nama Hadiah | Jumlah\nMotor | 1\nKulkas | 1\nRumah | 2\nTV | 5\nLemari | 1"></textarea>
-            <div class="form-text">Setiap baris: <b>Nama | Jumlah</b>. Di roda, yang tampil hanya <em>nama unik</em> agar tidak penuh.
-            Pengacakan mempertimbangkan <em>jumlah tersisa</em> tiap hadiah.</div>
+            <label class="form-label">Hadiah</label>
+            <div class="d-flex gap-2 flex-wrap mb-2">
+              <input type="file" id="fileHadiah" accept=".xlsx,.xls" class="form-control" style="max-width:280px">
+              <button class="btn btn-outline-primary btn-sm" id="downloadTemplateHadiah">Unduh Template Hadiah</button>
+            </div>
+            <textarea class="form-control" id="taHadiah" rows="5" placeholder="Nama Hadiah | Jumlah
+Motor | 1
+Kulkas | 1
+Rumah | 2
+TV | 5
+Lemari | 1"></textarea>
+            <div class="form-text">Isi lewat Excel <em>atau</em> tempel teks. Format baris: <b>Nama Hadiah | Jumlah</b>. Pada roda hanya tampil nama unik agar tidak penuh. Pengacakan mempertimbangkan jumlah tersisa.</div>
           </div>
 
           <div class="mb-3">
@@ -431,6 +439,38 @@
       const ws = wb.Sheets[wb.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(ws, {defval:''});
       const rows = data.map(r=>`${r.NPK||r.npk||''}, ${r.Nama||r.nama||''}, ${r.Department||r.Dept||r.department||''}`)
+                       .filter(s=>s.replace(/[,:\s]/g,'').length>0);
+      document.getElementById('taPeserta').value = rows.join('
+');
+      setStatus(`Terbaca ${rows.length} baris peserta dari Excel.`);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+  // Import Excel Hadiah
+  document.getElementById('fileHadiah').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const rows = data.map(r=>{
+        const name = r.Hadiah || r.Nama || r.Prize || r.hadiah || r.nama || r.prize || '';
+        const qty  = r.Jumlah || r.Qty || r.Quantity || r.jumlah || r.qty || r.quantity || '';
+        const qn = parseInt(qty,10);
+        if(name && !isNaN(qn) && qn>0) return `${name} | ${qn}`; else return '';
+      }).filter(Boolean);
+      document.getElementById('taHadiah').value = rows.join('
+');
+      setStatus(`Terbaca ${rows.length} baris hadiah dari Excel.`);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+    reader.onload = (ev)=>{
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const rows = data.map(r=>`${r.NPK||r.npk||''}, ${r.Nama||r.nama||''}, ${r.Department||r.Dept||r.department||''}`)
                        .filter(s=>s.replace(/[,\s]/g,'').length>0);
       document.getElementById('taPeserta').value = rows.join('\n');
       setStatus(`Terbaca ${rows.length} baris dari Excel.`);
@@ -462,6 +502,16 @@
   });
   document.getElementById('downloadTemplate').addEventListener('click', ()=>{
     const ws = XLSX.utils.aoa_to_sheet([["NPK","Nama","Department"],["1001","Andi","Finance"],["1002","Budi","Sales"]]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Peserta Template');
+    XLSX.writeFile(wb, 'template-peserta.xlsx');
+  });
+  document.getElementById('downloadTemplateHadiah').addEventListener('click', ()=>{
+    const ws = XLSX.utils.aoa_to_sheet([["Hadiah","Jumlah"],["Motor",1],["Kulkas",1],["Rumah",2],["TV",5],["Lemari",1]]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Hadiah Template');
+    XLSX.writeFile(wb, 'template-hadiah.xlsx');
+  });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Peserta Template');
     XLSX.writeFile(wb, 'template-peserta.xlsx');
