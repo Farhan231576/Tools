@@ -4,65 +4,584 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Undian Spin Wheel</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Bootstrap 5.3 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <style>
-    :root{--wheel-size:540px;--panel-w:420px;}
-    html,body{height:100%;}
-    body{overflow:hidden;}
-    .app-wrap{height:100dvh;display:grid;grid-template-columns:1fr var(--panel-w);grid-template-rows:auto 1fr;grid-template-areas:"toolbar toolbar""stage side";}
-    @media(max-width:992px){body{overflow:auto}.app-wrap{grid-template-columns:1fr;grid-template-rows:auto auto auto;grid-template-areas:"toolbar""stage""side";height:auto}}
-    .toolbar{grid-area:toolbar;border-bottom:1px solid var(--bs-border-color);}
-    .stage{grid-area:stage;display:grid;place-items:center;padding:8px}
-    .side{grid-area:side;border-left:1px solid var(--bs-border-color);overflow:auto}
-    .wheel-wrap{display:grid;place-items:center;width:100%}
-    .wheel-outer{position:relative;aspect-ratio:1/1;max-width:min(90vw,var(--wheel-size));}
-    canvas#wheel{width:100%;height:100%}
-    .pointer{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
-    .pointer svg{width:68px;height:68px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.25))}
-    .table-preview{max-height:200px;overflow:auto;border:1px solid var(--bs-border-color);border-radius:6px;margin-top:.5rem}
+    :root { --accent:#6f6cfb; --accent-2:#22c55e; --rim:#fff; --slice-stroke:rgba(0,0,0,.15) }
+    body { background: var(--bs-body-bg); }
+    .app-title { letter-spacing:.3px; }
+    .wheel-wrap { position:relative; display:grid; place-items:center; }
+    canvas#wheel { width: 440px; height: 440px; max-width: 80vw; max-height: 80vw; }
+    .center-pin { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
+    .center-pin .arrow { width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-bottom: 26px solid var(--accent); filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); transform: translateY(-6px); }
+    .center-pin .hub { width:46px; height:46px; border-radius:50%; background:#fff; border:4px solid var(--accent); position:absolute; display:grid; place-items:center; font-weight:800; font-size:.8rem; color:var(--accent) }
+    .wheel-shadow { filter: drop-shadow(0 8px 22px rgba(0,0,0,.2)); }
+    .controls .form-label small { opacity:.8 }
+    .legend-swatch { width:.9rem; height:.9rem; display:inline-block; border-radius:3px; margin-right:.4rem; border:1px solid rgba(0,0,0,.15) }
+    .btn-accent { background: var(--accent); color:#fff; border:0 }
+    .btn-accent:hover { filter: brightness(0.95) }
+    .spin-btn { font-weight:700; text-transform:uppercase; letter-spacing:.6px }
+    .badge-qty { font-variant-numeric: tabular-nums; }
+    .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 1100; }
+    .winner-card { max-width: 760px; }
+    .table-fixed-head { max-height: 300px; overflow:auto }
+    .table-fixed-head table thead th { position: sticky; top: 0; background: var(--bs-body-bg); z-index: 1; }
+    .card-body-scroll { max-height: 320px; overflow:auto }
+    .form-text code { user-select: all }
+    .visually-btn { position:absolute; left:-9999px }
   </style>
 </head>
 <body>
-<div class="app-wrap">
-  <div class="toolbar py-2 px-3 d-flex align-items-center gap-2 flex-wrap">
-    <div class="me-auto fw-semibold">Undian Spin Wheel</div>
-    <button id="btnSpin" class="btn btn-primary px-4 fw-semibold" disabled>SPIN</button>
-  </div>
+  <div class="container py-4 py-md-5">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="h4 app-title mb-0">🎯 Undian Spin Wheel</h1>
+      <div class="d-flex align-items-center gap-2">
+        <button id="toggleTheme" class="btn btn-outline-secondary btn-sm" type="button" title="Light/Dark" aria-label="Toggle tema">
+          <span class="d-none d-sm-inline">Mode</span> <span class="ms-1" id="themeIcon">🌙</span>
+        </button>
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="toggleConfetti" checked>
+          <label class="form-check-label" for="toggleConfetti">Konfeti</label>
+        </div>
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="toggleSound">
+          <label class="form-check-label" for="toggleSound">Suara</label>
+        </div>
+      </div>
+    </div>
 
-  <div class="stage">
-    <div class="wheel-wrap">
-      <div class="wheel-outer">
-        <canvas id="wheel" width="1000" height="1000"></canvas>
-        <div class="pointer">
-          <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="18" fill="#fff" stroke="#000"/><path d="M50 2 L58 22 L42 22 Z" fill="#dc3545" stroke="#000"/></svg>
+    <div class="row g-4">
+      <!-- LEFT: Config / Import / Controls -->
+      <div class="col-xxl-4 col-lg-5">
+        <div class="accordion" id="cfg">
+          <div class="accordion-item">
+            <h2 class="accordion-header"><button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#cfg-import">Konfigurasi & Import/Export</button></h2>
+            <div id="cfg-import" class="accordion-collapse collapse show" data-bs-parent="#cfg">
+              <div class="accordion-body">
+                <div class="row g-3 align-items-end">
+                  <div class="col-12">
+                    <label class="form-label">Import Peserta <small>(Excel/CSV, header: <code>NPK,Nama,Department</code>)</small></label>
+                    <input class="form-control" type="file" id="filePeserta" accept=".xlsx,.csv" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Import Hadiah <small>(Excel/CSV, header: <code>NamaHadiah,Jumlah,WarnaHex?</code>)</small></label>
+                    <input class="form-control" type="file" id="fileHadiah" accept=".xlsx,.csv" />
+                  </div>
+                </div>
+                <div class="d-flex gap-2 mt-3 flex-wrap">
+                  <button class="btn btn-outline-primary btn-sm" id="btnExportXLSX"><i class="bi bi-filetype-xlsx me-1"></i>Export Pemenang (.xlsx)</button>
+                  <button class="btn btn-outline-primary btn-sm" id="btnExportCSV"><i class="bi bi-filetype-csv me-1"></i>Export Pemenang (.csv)</button>
+                  <button class="btn btn-outline-secondary btn-sm" id="btnUndo"><i class="bi bi-arrow-counterclockwise me-1"></i>Undo terakhir</button>
+                  <button class="btn btn-outline-danger btn-sm" id="btnHardReset"><i class="bi bi-trash3 me-1"></i>Reset Semua</button>
+                </div>
+                <hr>
+                <p class="text-secondary small mb-2">Paste cepat (opsional)</p>
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label">Peserta <small>format: <code>NPK,Nama,Department</code></small></label>
+                    <textarea id="taPeserta" class="form-control" rows="5" placeholder="1001,Budi Santoso,Finance\n1002,Siti Aminah,HR"></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Hadiah <small>format: <code>NamaHadiah,Jumlah,WarnaHex?</code></small></label>
+                    <textarea id="taHadiah" class="form-control" rows="5" placeholder="Motor,1,#D81B60\nKulkas,1,#1E88E5\nRumah,2,#43A047\nTV,5,#FB8C00\nLemari,1,#8E24AA"></textarea>
+                  </div>
+                </div>
+                <div class="d-grid gap-2 mt-3">
+                  <button class="btn btn-accent" id="btnParsePaste">Parse & Muat</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion-item">
+            <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cfg-controls">Kontrol Undian</button></h2>
+            <div id="cfg-controls" class="accordion-collapse collapse" data-bs-parent="#cfg">
+              <div class="accordion-body controls">
+                <div class="row g-3">
+                  <div class="col-6">
+                    <label class="form-label" for="speed">Kecepatan <small>(deg/s)</small></label>
+                    <input type="range" class="form-range" id="speed" min="500" max="2000" step="50" value="1200" aria-label="Kecepatan putar">
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="duration">Durasi <small>(detik)</small></label>
+                    <input type="range" class="form-range" id="duration" min="3" max="8" step="0.5" value="5" aria-label="Durasi putar">
+                  </div>
+                </div>
+                <div class="mt-2 small text-secondary">
+                  <div>Sisa peserta belum menang: <strong id="badgeSisaPeserta">0</strong></div>
+                  <div>Total hadiah tersisa: <strong id="badgeTotalHadiah">0</strong></div>
+                </div>
+                <div class="d-grid mt-3">
+                  <button class="btn btn-accent spin-btn" id="btnSpin" disabled aria-label="Mulai undian">SPIN</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Legenda Hadiah</h5>
+            <ul id="legend" class="list-group list-group-flush"></ul>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Sisa Kuota Hadiah</h5>
+            <ul id="quota" class="list-group list-group-flush"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Wheel & Winners -->
+      <div class="col-xxl-8 col-lg-7">
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <h5 class="card-title mb-0">Roda Undian</h5>
+              <span class="badge text-bg-secondary" id="statusBadge">Siap</span>
+            </div>
+            <div class="wheel-wrap" role="img" aria-label="Roda undian hadiah">
+              <canvas id="wheel" width="720" height="720" class="wheel-shadow" aria-hidden="true"></canvas>
+              <div class="center-pin" aria-hidden="true">
+                <div class="hub">↑</div>
+                <div class="arrow"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-4">
+          <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+              <div class="card-body card-body-scroll">
+                <h5 class="card-title mb-3">Riwayat Pemenang</h5>
+                <div class="table-responsive table-fixed-head">
+                  <table class="table table-sm align-middle" id="tblWinners">
+                    <thead>
+                      <tr><th>Waktu</th><th>Hadiah</th><th>Jumlah</th><th>Nama (NPK / Dept)</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+              <div class="card-body card-body-scroll">
+                <h5 class="card-title mb-3">Peserta Belum Menang</h5>
+                <ul id="listRemaining" class="list-group list-group-flush"></ul>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="side p-3">
-    <div class="mb-3">
-      <label class="form-label fw-semibold">Peserta (.xlsx/.csv)</label>
-      <input type="file" id="filePeserta" accept=".xlsx,.csv" class="form-control mb-2">
-      <div id="previewPeserta" class="table-preview"></div>
-    </div>
-    <div class="mb-3">
-      <label class="form-label fw-semibold">Hadiah (.xlsx/.csv)</label>
-      <input type="file" id="fileHadiah" accept=".xlsx,.csv" class="form-control mb-2">
-      <div id="previewHadiah" class="table-preview"></div>
+  <!-- Winner Overlay -->
+  <div class="winner-overlay" id="winnerOverlay" role="dialog" aria-modal="true" aria-labelledby="ovTitle">
+    <div class="card winner-card text-center">
+      <div class="card-body p-4 p-md-5">
+        <div class="display-6 mb-2" id="ovTitle">🎉 SELAMAT! 🎉</div>
+        <div class="fs-5">Hadiah:</div>
+        <div class="fw-bold h3 my-2" id="ovPrize">—</div>
+        <div class="fs-5">Pemenang:</div>
+        <div class="fw-bold h5 my-2" id="ovNames">—</div>
+        <button class="btn btn-accent mt-3" id="btnCloseOverlay" aria-label="Tutup dialog">Tutup</button>
+      </div>
     </div>
   </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script>
-const wheel=document.getElementById('wheel');const ctx=wheel.getContext('2d');let state={participants:[],prizes:[]};function drawWheel(){ctx.clearRect(0,0,1000,1000);ctx.beginPath();ctx.arc(500,500,480,0,2*Math.PI);ctx.fillStyle='#f8f9fa';ctx.fill();}
-function renderPreview(id,data,headers){const wrap=document.getElementById(id);if(!data.length){wrap.innerHTML='<small class="text-secondary">Belum ada data</small>';return;}let html='<table class="table table-sm table-striped align-middle mb-0"><thead><tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';for(const row of data){html+='<tr>'+headers.map(h=>`<td>${row[h]??''}</td>`).join('')+'</tr>';}html+='</tbody></table>';wrap.innerHTML=html;}
-async function parseFile(f){const ext=f.name.split('.').pop().toLowerCase();const buf=await f.arrayBuffer();if(ext==='csv'){const text=new TextDecoder().decode(buf);const lines=text.split(/\r?\n/).filter(Boolean);const header=lines.shift().split(',');return lines.map(l=>{const parts=l.split(',');const o={};header.forEach((h,i)=>o[h.trim()]=parts[i]?.trim()||'');return o;});}const wb=XLSX.read(buf,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];return XLSX.utils.sheet_to_json(ws,{defval:''});}
-filePeserta.addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;const data=await parseFile(f);state.participants=data;renderPreview('previewPeserta',data,['NPK','Nama','Department']);});
-fileHadiah.addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;const data=await parseFile(f);state.prizes=data;renderPreview('previewHadiah',data,['NamaHadiah','Jumlah','WarnaHex']);});
-window.addEventListener('load',drawWheel);
-</script>
+  <!-- Bootstrap & libs -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script>
+    // ============================ STATE & TYPES ============================
+    /** Participant: { npk:string, name:string, dept:string, won?:boolean } */
+    /** Prize: { name:string, qty:number, color?:string } */
+
+    const palette = [
+      '#ef4444','#f59e0b','#10b981','#3b82f6','#a855f7','#f97316','#14b8a6','#22c55e','#eab308','#06b6d4',
+      '#fb7185','#60a5fa','#34d399','#f472b6','#a3e635','#93c5fd','#facc15','#84cc16','#f43f5e','#6366f1'
+    ];
+
+    let participants = [];        // all participants
+    let prizes = [];              // configured prizes
+    let remainingPrizes = [];     // deep copy with current qty
+    let colorMap = {};            // prizeName -> color (stable)
+    let winnersLog = [];          // array of {ts, prize, count, winners:[{npk,name,dept}]}
+    let lastAction = null;        // for Undo
+
+    // Wheel state
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    let angle = 0;                // current rotation in radians
+    let spinning = false;
+
+    // ============================ HELPERS ============================
+    const nowISO = () => new Date().toISOString();
+    const by = (k) => (a,b)=> (a[k]||'').localeCompare(b[k]||'');
+
+    function saveLS(){
+      const payload = { participants, prizes, remainingPrizes, colorMap, winnersLog, angle,
+                        theme: document.documentElement.getAttribute('data-bs-theme'),
+                        opts:{ confetti: document.getElementById('toggleConfetti').checked,
+                               sound: document.getElementById('toggleSound').checked,
+                               speed: document.getElementById('speed').value,
+                               duration: document.getElementById('duration').value }};
+      localStorage.setItem('spinwheel_state_v2', JSON.stringify(payload));
+    }
+    function loadLS(){
+      const s = localStorage.getItem('spinwheel_state_v2');
+      if(!s) return false;
+      try{
+        const p = JSON.parse(s);
+        participants = p.participants||[]; prizes = p.prizes||[]; remainingPrizes = p.remainingPrizes||[];
+        colorMap = p.colorMap||{}; winnersLog = p.winnersLog||[]; angle = p.angle||0;
+        if(p.theme){ document.documentElement.setAttribute('data-bs-theme', p.theme); document.getElementById('themeIcon').textContent = p.theme==='dark'?'🌞':'🌙'; }
+        if(p.opts){
+          document.getElementById('toggleConfetti').checked = !!p.opts.confetti;
+          document.getElementById('toggleSound').checked = !!p.opts.sound;
+          if(p.opts.speed) document.getElementById('speed').value = p.opts.speed;
+          if(p.opts.duration) document.getElementById('duration').value = p.opts.duration;
+        }
+        return true;
+      }catch(e){ console.warn('loadLS failed', e); return false; }
+    }
+
+    function hash(s){ return s.split('').reduce((a,c)=>((a<<5)-a + c.charCodeAt(0))|0,0)>>>0; }
+    function colorForPrize(name){
+      if(colorMap[name]) return colorMap[name];
+      const col = palette[ hash(name) % palette.length ];
+      colorMap[name] = col; return col;
+    }
+
+    function totalQty(){ return remainingPrizes.reduce((t,p)=>t+p.qty,0); }
+    function remainingParticipants(){ return participants.filter(p=>!p.won); }
+
+    function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+    function rad(deg){ return deg * Math.PI / 180; }
+
+    function cryptoRandInt(max){
+      const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+      return Math.floor((arr[0] / (0xFFFFFFFF + 1)) * max);
+    }
+
+    function pickPrizeWeighted(){
+      const total = totalQty(); if(total<=0) return null;
+      let r = cryptoRandInt(total) + Math.random(); // tiny jitter
+      for(const p of remainingPrizes){ if(r < p.qty) return p; r -= p.qty; }
+      return remainingPrizes.at(-1) || null;
+    }
+
+    function pickUniqueWinners(k){
+      const pool = remainingParticipants(); if(pool.length===0) return [];
+      const n = Math.min(k, pool.length);
+      const idxs = new Set();
+      while(idxs.size < n){ idxs.add( cryptoRandInt(pool.length) ); }
+      return [...idxs].map(i=>pool[i]);
+    }
+
+    // ============================ DRAW WHEEL ============================
+    function drawWheel(){
+      const w = canvas.width, h = canvas.height; const r = Math.min(w,h)/2 - 10;
+      ctx.clearRect(0,0,w,h); ctx.save(); ctx.translate(w/2, h/2); ctx.rotate(angle);
+
+      const total = Math.max(1, totalQty());
+      let start = -Math.PI/2; // top
+      for(const p of remainingPrizes){
+        const frac = p.qty / total; const arc = frac * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r, start, start+arc); ctx.closePath();
+        ctx.fillStyle = p.color || colorForPrize(p.name); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--slice-stroke') || 'rgba(0,0,0,.15)'; ctx.stroke();
+
+        // label once
+        ctx.save(); const mid = start + arc/2; ctx.rotate(mid); ctx.translate(r*0.68, 0); ctx.rotate(Math.PI/2);
+        ctx.fillStyle = '#fff'; ctx.font = '700 24px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
+        ctx.fillText(p.name.toUpperCase(), 0, 0, r*0.9);
+        ctx.restore();
+
+        p._start = start; p._end = start + arc; start += arc; // store for hit-test
+      }
+      // rim
+      ctx.beginPath(); ctx.arc(0,0,r+6,0,Math.PI*2); ctx.lineWidth = 12; ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--rim') || '#fff'; ctx.stroke();
+      ctx.restore();
+    }
+
+    function findSegmentAngles(prize){
+      for(const p of remainingPrizes){ if(p.name===prize.name) return {start:p._start,end:p._end}; }
+      return {start:-Math.PI/2, end:-Math.PI/2};
+    }
+
+    function setStatus(t){ document.getElementById('statusBadge').textContent = t; }
+
+    // ============================ SPIN LOGIC ============================
+    function spinToPrize(prize, onDone){
+      if(!prize) return;
+      const speed = parseFloat(document.getElementById('speed').value);
+      const duration = parseFloat(document.getElementById('duration').value);
+      const minRot = rad(speed * duration);
+
+      const seg = findSegmentAngles(prize);
+      const mid = (seg.start + seg.end)/2; const TAU = Math.PI*2;
+      let targetAngle = angle + minRot; const alignDelta = (-Math.PI/2) - mid; targetAngle += alignDelta;
+      const extraTurns = 2 + cryptoRandInt(2); targetAngle += extraTurns * TAU;
+
+      const startTime = performance.now(); const startAngle = angle; const totalDelta = targetAngle - startAngle;
+      setStatus('Berputar…'); spinning = true;
+
+      function tick(now){
+        const t = Math.min(1, (now - startTime) / (duration*1000));
+        const eased = easeOutCubic(t); angle = startAngle + totalDelta * eased; drawWheel();
+        if(t < 1) requestAnimationFrame(tick); else { spinning = false; angle %= (Math.PI*2); setStatus('Selesai'); onDone&&onDone(); }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function doSpin(){
+      if(spinning) return;
+      if(remainingParticipants().length===0) { alert('Peserta habis.'); return; }
+      if(totalQty()===0) { alert('Hadiah habis.'); return; }
+
+      // choose prize by weight, choose winners by unique RNG
+      const prize = pickPrizeWeighted();
+      const winCount = Math.min(prize.qty, remainingParticipants().length);
+      const winners = pickUniqueWinners(winCount);
+
+      // redraw to update _start/_end then spin
+      drawWheel();
+      spinToPrize(prize, ()=>{
+        // commit results
+        lastAction = { type:'spin', prize: prize.name, count: winCount, winners: winners.map(w=>w.npk) };
+
+        // mark winners
+        for(const w of winners){ const ref = participants.find(p=>p.npk===w.npk); if(ref) ref.won = true; }
+        // reduce prize qty
+        const rp = remainingPrizes.find(x=>x.name===prize.name); if(rp){ rp.qty -= winCount; if(rp.qty<=0){ remainingPrizes = remainingPrizes.filter(x=>x.qty>0); } }
+
+        // log
+        winnersLog.push({ ts: nowISO(), prize: prize.name, count: winCount, winners: winners.map(({npk,name,dept})=>({npk,name,dept})) });
+
+        // UI updates
+        updateAllUI();
+        showOverlay(prize.name, winners);
+        if(document.getElementById('toggleConfetti').checked) confettiBurst();
+        if(document.getElementById('toggleSound').checked) playDing();
+        saveLS();
+      });
+    }
+
+    function undoLast(){
+      if(!lastAction){ alert('Tidak ada aksi untuk di-undo.'); return; }
+      if(lastAction.type==='spin'){
+        // revert winners won flag
+        for(const npk of lastAction.winners){ const ref = participants.find(p=>p.npk===npk); if(ref) ref.won = false; }
+        // add back prize qty
+        const rp = remainingPrizes.find(x=>x.name===lastAction.prize);
+        if(rp) rp.qty += lastAction.count; else remainingPrizes.push({ name:lastAction.prize, qty:lastAction.count, color: colorMap[lastAction.prize] });
+        // remove last winnersLog entry matching it
+        for(let i=winnersLog.length-1;i>=0;i--){ const e=winnersLog[i]; if(e.prize===lastAction.prize && e.count===lastAction.count){ winnersLog.splice(i,1); break; } }
+        lastAction = null; updateAllUI(); saveLS();
+      }
+    }
+
+    // ============================ UI BUILDERS ============================
+    function rebuildLegend(){
+      const ul = document.getElementById('legend'); ul.innerHTML = '';
+      for(const p of remainingPrizes){
+        const li = document.createElement('li'); li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        const color = p.color || colorForPrize(p.name);
+        li.innerHTML = `<span><i class="legend-swatch" style="background:${color}"></i>${p.name}</span>`+
+                        `<span class="badge text-bg-light badge-qty">x${p.qty}</span>`;
+        ul.appendChild(li);
+      }
+    }
+    function rebuildQuota(){
+      const ul = document.getElementById('quota'); ul.innerHTML = '';
+      for(const p of remainingPrizes){
+        const li = document.createElement('li'); li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        li.innerHTML = `<span>${p.name}</span><span class="badge text-bg-secondary">Sisa: ${p.qty}</span>`;
+        ul.appendChild(li);
+      }
+      document.getElementById('badgeTotalHadiah').textContent = totalQty();
+    }
+    function rebuildRemainingList(){
+      const ul = document.getElementById('listRemaining'); ul.innerHTML='';
+      for(const p of remainingParticipants().sort(by('name'))){
+        const li = document.createElement('li'); li.className='list-group-item d-flex justify-content-between align-items-center';
+        li.innerHTML = `<span>${p.name}</span><small class="text-secondary">${p.npk} / ${p.dept}</small>`;
+        ul.appendChild(li);
+      }
+      document.getElementById('badgeSisaPeserta').textContent = remainingParticipants().length;
+    }
+    function rebuildWinnersTable(){
+      const tb = document.querySelector('#tblWinners tbody'); tb.innerHTML='';
+      for(const e of winnersLog.slice().reverse()){
+        const tr=document.createElement('tr');
+        const nm = e.winners.map(w=>`${w.name} (${w.npk} / ${w.dept})`).join('; ');
+        tr.innerHTML = `<td>${new Date(e.ts).toLocaleString()}</td><td>${e.prize}</td><td>${e.count}</td><td>${nm}</td>`;
+        tb.appendChild(tr);
+      }
+    }
+
+    function updateAllUI(){
+      rebuildLegend(); rebuildQuota(); rebuildRemainingList(); rebuildWinnersTable(); drawWheel(); setStatus('Siap');
+      document.getElementById('btnSpin').disabled = (remainingParticipants().length===0 || totalQty()===0);
+    }
+
+    function showOverlay(prizeName, winners){
+      document.getElementById('ovPrize').textContent = prizeName;
+      document.getElementById('ovNames').innerHTML = winners.map(w=>`${w.name} <small class="text-secondary">(${w.npk} / ${w.dept})</small>`).join('<br>');
+      const ov = document.getElementById('winnerOverlay'); ov.style.display='flex';
+      setTimeout(()=>{ ov.style.display='none'; }, 4000);
+    }
+
+    function confettiBurst(){
+      const duration = 1600; const end = Date.now() + duration;
+      (function frame(){ confetti({ particleCount: 6, spread: 70, origin: { y: 0.6 } }); if(Date.now()<end) requestAnimationFrame(frame); })();
+    }
+
+    function playDing(){
+      try{
+        const ctxA = new (window.AudioContext||window.webkitAudioContext)();
+        const o = ctxA.createOscillator(); const g = ctxA.createGain();
+        o.type='triangle'; o.frequency.value = 880; o.connect(g); g.connect(ctxA.destination); g.gain.setValueAtTime(0, ctxA.currentTime); g.gain.linearRampToValueAtTime(0.2, ctxA.currentTime+0.01); g.gain.exponentialRampToValueAtTime(0.001, ctxA.currentTime+0.6); o.start(); o.stop(ctxA.currentTime+0.62);
+      }catch(e){ /* ignore */ }
+    }
+
+    // ============================ IMPORT / EXPORT ============================
+    function validateHeaders(objArray, required){
+      if(!objArray || objArray.length===0) return false;
+      const keys = Object.keys(objArray[0]);
+      return required.every(h=>keys.includes(h));
+    }
+
+    function handleFile(file, type){
+      const reader = new FileReader();
+      const isCSV = file.name.toLowerCase().endsWith('.csv');
+      reader.onload = (e)=>{
+        let rows = [];
+        if(isCSV){
+          const text = e.target.result; const [headerLine, ...lines] = text.split(/\r?\n/).filter(Boolean);
+          const headers = headerLine.split(',').map(s=>s.trim());
+          for(const line of lines){ const parts = line.split(','); const obj={}; headers.forEach((h,i)=>obj[h]=parts[i]?parts[i].trim():''); rows.push(obj); }
+        }else{
+          const data = new Uint8Array(e.target.result); const wb = XLSX.read(data, {type:'array'}); const ws = wb.Sheets[wb.SheetNames[0]]; rows = XLSX.utils.sheet_to_json(ws);
+        }
+
+        if(type==='peserta'){
+          if(!validateHeaders(rows, ['NPK','Nama','Department'])){ alert('Header peserta wajib: NPK,Nama,Department'); return; }
+          participants = [];
+          const seen = new Set();
+          for(const r of rows){ const npk=(r.NPK||'').toString().trim(); if(!npk || seen.has(npk)) continue; seen.add(npk);
+            participants.push({ npk, name:(r.Nama||'').toString().trim(), dept:(r.Department||'').toString().trim(), won:false });
+          }
+        } else if(type==='hadiah'){
+          if(!validateHeaders(rows, ['NamaHadiah','Jumlah'])){ alert('Header hadiah minimal: NamaHadiah,Jumlah,(WarnaHex opsional)'); return; }
+          prizes = []; colorMap = {};
+          const acc = {};
+          for(const r of rows){
+            const name = (r.NamaHadiah||'').toString().trim(); if(!name) continue;
+            const qty = Math.max(0, parseInt(r.Jumlah,10)||0);
+            const col = (r.WarnaHex||'').toString().trim();
+            if(!acc[name]) acc[name] = { name, qty:0, color: col||undefined };
+            acc[name].qty += qty; if(col) acc[name].color = col; // last color wins
+          }
+          prizes = Object.values(acc);
+          remainingPrizes = JSON.parse(JSON.stringify(prizes));
+          for(const p of prizes){ if(p.color) colorMap[p.name]=p.color; }
+        }
+        // reset runtime bits
+        winnersLog = []; lastAction=null; angle=0;
+        remainingPrizes = remainingPrizes.length?remainingPrizes:JSON.parse(JSON.stringify(prizes));
+        updateAllUI(); saveLS();
+      };
+      if(isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+    }
+
+    function exportWinnersXLSX(){
+      const rows = winnersLog.map(e=>({
+        Waktu: new Date(e.ts).toLocaleString(), Hadiah: e.prize, Jumlah: e.count, NamaNPKDept: e.winners.map(w=>`${w.name} (${w.npk} / ${w.dept})`).join('; ')
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Winners');
+      XLSX.writeFile(wb, `winners-${new Date().toISOString().replace(/[:.]/g,'-')}.xlsx`);
+    }
+    function exportWinnersCSV(){
+      const header = 'Waktu,Hadiah,Jumlah,NamaNPKDept\n';
+      const lines = winnersLog.map(e=>{
+        const nm = e.winners.map(w=>`${w.name} (${w.npk} / ${w.dept})`).join('; ');
+        return `${new Date(e.ts).toLocaleString()},${e.prize},${e.count},"${nm.replace(/"/g,'""')}"`;
+      });
+      const blob = new Blob([header + lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`winners-${new Date().toISOString().replace(/[:.]/g,'-')}.csv`; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function parsePasteAreas(){
+      // Peserta: NPK,Nama,Department per baris
+      const ptext = document.getElementById('taPeserta').value.trim();
+      const linesP = ptext.split(/\r?\n/).filter(Boolean);
+      const seen = new Set(); participants = [];
+      for(const l of linesP){ const [npk,name,dept] = l.split(','); const id=(npk||'').trim(); if(!id||seen.has(id)) continue; seen.add(id); participants.push({ npk:id, name:(name||'').trim(), dept:(dept||'').trim(), won:false }); }
+
+      // Hadiah: Nama,Qty,Hex?
+      const htext = document.getElementById('taHadiah').value.trim(); const linesH = htext.split(/\r?\n/).filter(Boolean);
+      const acc={};
+      for(const l of linesH){ const [name,qtyStr,hex] = l.split(','); const nm=(name||'').trim(); if(!nm) continue; const q=Math.max(0, parseInt(qtyStr,10)||0); const hx=(hex||'').trim();
+        if(!acc[nm]) acc[nm]={ name:nm, qty:0, color: hx||undefined }; acc[nm].qty += q; if(hx) acc[nm].color = hx; }
+      prizes = Object.values(acc); remainingPrizes = JSON.parse(JSON.stringify(prizes)); colorMap={}; for(const p of prizes){ if(p.color) colorMap[p.name]=p.color; }
+
+      winnersLog=[]; lastAction=null; angle=0; updateAllUI(); saveLS();
+    }
+
+    // ============================ EVENTS ============================
+    document.getElementById('btnParsePaste').addEventListener('click', parsePasteAreas);
+    document.getElementById('filePeserta').addEventListener('change', (e)=>{ const f=e.target.files[0]; if(f) handleFile(f,'peserta'); });
+    document.getElementById('fileHadiah').addEventListener('change', (e)=>{ const f=e.target.files[0]; if(f) handleFile(f,'hadiah'); });
+    document.getElementById('btnSpin').addEventListener('click', doSpin);
+    document.getElementById('btnUndo').addEventListener('click', undoLast);
+    document.getElementById('btnHardReset').addEventListener('click', ()=>{ if(confirm('Hapus semua data & riwayat?')){ localStorage.removeItem('spinwheel_state_v2'); participants=[]; prizes=[]; remainingPrizes=[]; winnersLog=[]; lastAction=null; angle=0; updateAllUI(); } });
+    document.getElementById('btnCloseOverlay').addEventListener('click', ()=>{ document.getElementById('winnerOverlay').style.display='none'; });
+    document.getElementById('toggleTheme').addEventListener('click', ()=>{
+      const html = document.documentElement; const cur = html.getAttribute('data-bs-theme'); const next = cur==='dark'?'light':'dark'; html.setAttribute('data-bs-theme', next); document.getElementById('themeIcon').textContent = next==='dark'?'🌞':'🌙'; drawWheel(); saveLS();
+    });
+    document.getElementById('toggleConfetti').addEventListener('change', saveLS);
+    document.getElementById('toggleSound').addEventListener('change', saveLS);
+    document.getElementById('btnExportXLSX').addEventListener('click', exportWinnersXLSX);
+    document.getElementById('btnExportCSV').addEventListener('click', exportWinnersCSV);
+
+    // Keyboard accessible: Space/Enter to spin
+    document.addEventListener('keydown', (e)=>{ if((e.code==='Space'||e.key==='Enter') && !spinning){ e.preventDefault(); document.getElementById('btnSpin').click(); } });
+
+    // ============================ INIT ============================
+    if(!loadLS()){
+      // Prefill minimal demo
+      participants = [
+        {npk:'1001', name:'Budi Santoso', dept:'Finance'},
+        {npk:'1002', name:'Siti Aminah', dept:'HR'},
+        {npk:'1003', name:'Dewi Lestari', dept:'IT'},
+        {npk:'1004', name:'Rudi Hartono', dept:'Marketing'},
+        {npk:'1005', name:'Intan Pratiwi', dept:'GA'}
+      ];
+      prizes = [
+        {name:'Motor', qty:1, color:'#D81B60'},
+        {name:'Kulkas', qty:1, color:'#1E88E5'},
+        {name:'Rumah', qty:2, color:'#43A047'},
+        {name:'TV', qty:5, color:'#FB8C00'},
+        {name:'Lemari', qty:1, color:'#8E24AA'}
+      ];
+      remainingPrizes = JSON.parse(JSON.stringify(prizes));
+      for(const p of prizes){ if(p.color) colorMap[p.name]=p.color; }
+    }
+    updateAllUI();
+  </script>
 </body>
 </html>
