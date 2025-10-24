@@ -279,7 +279,7 @@
   <source src="https://cdn.jsdelivr.net/gh/naptha/tinyfiledialogs/sounds/notify.wav" type="audio/wav">
 </audio>
 
-<!-- Dependencies: Bootstrap JS, SheetJS, FileSaver polyfill (via SheetJS), Confetti -->
+<!-- Dependencies: Bootstrap JS, SheetJS, Confetti -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
@@ -312,7 +312,6 @@ const $$ = sel => Array.from(document.querySelectorAll(sel));
 const fmtTime = iso => new Date(iso).toLocaleString();
 const deepClone = obj => JSON.parse(JSON.stringify(obj));
 const randomInt = (maxExclusive) => {
-  // cryptographically strong integer in [0, maxExclusive)
   if (maxExclusive <= 0) return 0;
   const range = Math.floor(maxExclusive);
   const max = 0xFFFFFFFF;
@@ -322,10 +321,9 @@ const randomInt = (maxExclusive) => {
   return Math.floor(x * range);
 };
 function weightedChoice(weights){
-  // weights: array of positive numbers
   const total = weights.reduce((a,b)=>a+b,0);
   if (total <= 0) return -1;
-  const r = randomInt(1e9) / 1e9 * total; // high resolution draw
+  const r = randomInt(1e9) / 1e9 * total;
   let c = 0;
   for (let i=0;i<weights.length;i++){ c += weights[i]; if (r < c) return i; }
   return weights.length-1;
@@ -344,7 +342,6 @@ $('#soundToggle').checked = !!state.sound; $('#soundToggle').addEventListener('c
 
 /*****************************\n|*  IMPORT / PARSE          *|\n*****************************/
 function parseCSV(text){
-  // Simple CSV (no complex quotes); expect comma-separated
   return text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean).map(r=>r.split(',').map(c=>c.trim()));
 }
 function readFileAsArrayBuffer(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsArrayBuffer(file); }); }
@@ -366,14 +363,12 @@ async function handleImport(file, type){
     } else { throw new Error('Format tidak didukung'); }
 
     if (type==='peserta'){
-      // Validate header exactly: NPK, Nama, Department
       const [h1, h2, h3] = (rows[0]||[]).map(h=>h.trim());
       if (!(h1==='NPK' && h2==='Nama' && h3==='Department')) throw new Error('Header peserta harus: NPK,Nama,Department');
       const items = rows.slice(1).filter(r=>r.length>=3 && r[0]).map(r=>({npk:String(r[0]).trim(), name:String(r[1]).trim(), dept:String(r[2]).trim(), won:false}));
       setParticipants(items);
       alert('Data peserta tersimpan. Klik "View Data" untuk menampilkan tabel.');
     } else if (type==='hadiah'){
-      // Header: NamaHadiah, Jumlah, WarnaHex (opsional -> tetap harus ada kolom)
       const [h1, h2, h3] = (rows[0]||[]).map(h=>h.trim());
       if (!(h1==='NamaHadiah' && h2==='Jumlah' && h3==='WarnaHex')) throw new Error('Header hadiah harus: NamaHadiah,Jumlah,WarnaHex');
       const items = rows.slice(1).filter(r=>r.length>=2 && r[0]).map((r,i)=>({
@@ -421,7 +416,6 @@ $('#btnSampleHadiah').addEventListener('click', ()=>{
 });
 
 function setParticipants(items){
-  // Enforce unique NPK (first occurrence wins), mark duplicates
   const seen = new Set();
   const uniques = []; let dups=0;
   for (const it of items){
@@ -435,7 +429,6 @@ function setParticipants(items){
   $('#dupPeserta').textContent = dups;
 }
 function setPrizes(items){
-  // Remove qty 0 entries; keep color consistent
   const clean = items.filter(p=>p.qtyTotal>0).map(p=>({name:p.name, qtyTotal:p.qtyTotal, qtyLeft:p.qtyLeft, color:p.color||defaultColor(0)}));
   state.prizes = clean; store.save(state); updatePrizeSummary();
 }
@@ -449,11 +442,12 @@ function renderParticipantsTable(hideIfEmpty=false){
     tbody.appendChild(tr);
   });
   $('#sumPeserta').textContent = state.participants.length;
-  wrap.hidden = !(state.participants.length>0) && hideIfEmpty;
-  wrap.hidden = state.participants.length===0; // always show if any
+  wrap.hidden = state.participants.length===0;
 }
 
 function updatePrizeSummary(){
+  // drop prizes with 0 qtyLeft so they won't show / weigh the wheel
+  state.prizes = state.prizes.filter(p=>p.qtyLeft>0);
   const total = state.prizes.reduce((a,p)=>a+p.qtyTotal,0);
   const left = state.prizes.reduce((a,p)=>a+p.qtyLeft,0);
   $('#totalHadiah').textContent = total; $('#sisaHadiah').textContent = left;
@@ -463,20 +457,20 @@ function updatePrizeSummary(){
 
 /*****************************\n|*  WHEEL RENDERING         *|\n*****************************/
 const canvas = $('#wheelCanvas'); const ctx = canvas.getContext('2d');
-let wheelRotation = 0; // radians, 0 at pointing up
-let sectors = []; // computed from prizes (equal slices per prize type)
+let wheelRotation = 0; // radians
+let sectors = []; // computed from prizes (one slice per prize type)
 
 function defaultColor(i){
   const palette = ['#D81B60','#1E88E5','#43A047','#FB8C00','#8E24AA','#00897B','#3949AB','#F4511E','#6D4C41','#7CB342','#5E35B1','#00ACC1'];
   return palette[i % palette.length];
 }
 function buildSectors(){
-  sectors = state.prizes.map((p, idx)=>({
-    name:p.name, color:p.color||defaultColor(idx), idx,
-  }));
+  sectors = state.prizes.map((p, idx)=>({ name:p.name, color:p.color||defaultColor(idx), idx }));
 }
 function drawWheel(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Ensure we don't draw zero-qty prizes
+  state.prizes = state.prizes.filter(p=>p.qtyLeft>0);
   buildSectors();
   const n = Math.max(1, sectors.length);
   const cx = canvas.width/2, cy=cx, r = canvas.width/2 - 10;
@@ -487,13 +481,9 @@ function drawWheel(){
   for (let i=0;i<n;i++){
     const s = sectors[i];
     const start = i*arc; const end = start + arc;
-    // slice
-    ctx.beginPath();
-    ctx.moveTo(0,0); ctx.arc(0,0,r,start,end); ctx.closePath();
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r,start,end); ctx.closePath();
     ctx.fillStyle = s.color; ctx.fill();
-    // separator
     ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 2; ctx.stroke();
-    // label
     ctx.save();
     ctx.fillStyle = '#fff';
     ctx.rotate(start + arc/2);
@@ -501,7 +491,6 @@ function drawWheel(){
     const text = s.name; wrapText(ctx, text, r-30, 26);
     ctx.restore();
   }
-  // center hub
   ctx.beginPath(); ctx.arc(0,0,60,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.lineWidth=4; ctx.stroke();
   ctx.restore();
 }
@@ -529,7 +518,6 @@ async function spin(){
   const prize = state.prizes[prizeIndex];
   if (!prize || prize.qtyLeft<=0) return alert('Hadiah terpilih tidak tersedia.');
 
-  // Pick winners now (before animation), but don't apply until confirm (Simpan & Lanjut)
   const qty = Math.min(prize.qtyLeft, remainingParticipants.length);
   if (qty<=0) return alert('Tidak ada peserta tersisa.');
 
@@ -537,25 +525,25 @@ async function spin(){
   const sectorAngle = (Math.PI*2)/Math.max(1, sectors.length);
   const targetSectorCenter = (prizeIndex + 0.5) * sectorAngle;
   const currentAngle = (wheelRotation % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
-  // We want the pointer (fixed up) to land on target => rotate wheel so that target center reaches top ( -0 )
   let delta = (Math.PI*2 - targetSectorCenter) - currentAngle;
   delta = ((delta + Math.PI*2) % (Math.PI*2));
-  const turns = 4; // full extra spins
+  const turns = 4;
   const duration = parseFloat($('#rangeSpeed').value) * 1000;
 
   await animateRotation(wheelRotation, wheelRotation + delta + turns*Math.PI*2, duration, easeOutCubic);
 
-  // Effects + overlay
   if (state.sound) { try { $('#audioWin').currentTime=0; $('#audioWin').play(); } catch{} }
   if (state.confetti){ confetti({spread: 70, particleCount: 120, scalar: 1}); }
 
   showWinnersOverlay(prize, picks);
-  // Prepare undo snapshot and pending apply on Save & Continue
   undoSnapshot = deepClone(state);
   $('#btnSaveContinue').onclick = ()=>{
-    // Apply outcome: mark winners, deduct stock, push history
     for (const w of picks){ const idx = state.participants.findIndex(p=>p.npk===w.npk); if (idx>=0) state.participants[idx].won = true; }
     prize.qtyLeft -= picks.length; if (prize.qtyLeft<0) prize.qtyLeft=0;
+    // Hapus hadiah dari wheel bila stok habis
+    if (prize.qtyLeft === 0) {
+      state.prizes = state.prizes.filter(p => p !== prize);
+    }
     state.winners.push({timeISO:new Date().toISOString(), prizeName:prize.name, count:picks.length, winners:picks});
     store.save(state);
     updatePrizeSummary(); drawWheel(); renderWinnersTable(); renderParticipantsTable();
@@ -605,7 +593,7 @@ function infoRealtime(showAlert=false){
 const winModal = new bootstrap.Modal($('#winModal'));
 function showWinnersOverlay(prize, picks){
   $('#winTitle').textContent = `Pemenang — ${prize.name}`;
-  $('#winDesc').innerHTML = `<span class="badge" style="background:${prize.color}">${escapeHtml(prize.name)}</span> &times; ${picks.length}`;
+  $('#winDesc').innerHTML = `<span class=\"badge\" style=\"background:${prize.color}\">${escapeHtml(prize.name)}</span> &times; ${picks.length}`;
   const tbody = $('#tblWinList tbody'); tbody.innerHTML='';
   picks.forEach((w,i)=>{
     const tr=document.createElement('tr');
@@ -662,7 +650,6 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<
 /*****************************\n|*  INIT                    *|\n*****************************/
 (function init(){
   applyTheme();
-  // make wheel crisp on HiDPI
   function resizeCanvas(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
     const rect = canvas.getBoundingClientRect();
@@ -675,10 +662,8 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
-  // Restore toggles
   $('#confettiToggle').checked = !!state.confetti; $('#soundToggle').checked = !!state.sound;
 
-  // Render existing data
   renderParticipantsTable(true); updatePrizeSummary(); renderWinnersTable(); drawWheel();
   $('#yearNow').textContent = new Date().getFullYear();
 })();
