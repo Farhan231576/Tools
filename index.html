@@ -526,11 +526,106 @@
     }
 
     function parsePasteAreas(){
-      // Peserta: NPK,Nama,Department per baris
+      // Keep current state as fallback
+      const prevParticipants = participants.slice();
+      const prevPrizes = prizes.slice();
+      const prevRemaining = remainingPrizes.slice();
+      const prevColorMap = { ...colorMap };
+
       const ptext = document.getElementById('taPeserta').value.trim();
-      const linesP = ptext.split(/\r?\n/).filter(Boolean);
-      const seen = new Set(); participants = [];
-      for(const l of linesP){ const [npk,name,dept] = l.split(','); const id=(npk||'').trim(); if(!id||seen.has(id)) continue; seen.add(id); participants.push({ npk:id, name:(name||'').trim(), dept:(dept||'').trim(), won:false }); }
+      const htext = document.getElementById('taHadiah').value.trim();
+
+      let participantsChanged = false;
+      let prizesChanged = false;
+
+      // ===== Peserta (optional): NPK,Nama,Department per baris =====
+      if(ptext){
+        const linesP = ptext.split(/
+?
+/).filter(Boolean);
+        const seen = new Set();
+        const parsed = [];
+        for(const l of linesP){
+          const [npk,name,dept] = l.split(',');
+          const id=(npk||'').toString().trim();
+          if(!id || seen.has(id)) continue; // ignore kosong & duplikat
+          seen.add(id);
+          parsed.push({ npk:id, name:(name||'').toString().trim(), dept:(dept||'').toString().trim(), won:false });
+        }
+        if(parsed.length===0){
+          alert('Tidak ada peserta valid pada textarea. Data peserta lama dipertahankan.');
+        } else {
+          participants = parsed;
+          participantsChanged = true;
+        }
+      }
+
+      // ===== Hadiah (optional): Nama,Qty,Hex? =====
+      if(htext){
+        const linesH = htext.split(/
+?
+/).filter(Boolean);
+        const acc={};
+        for(const l of linesH){
+          const [name,qtyStr,hex] = l.split(',');
+          const nm=(name||'').toString().trim(); if(!nm) continue;
+          const q = Math.max(0, parseInt(qtyStr,10)||0);
+          const hx=(hex||'').toString().trim();
+          if(!acc[nm]) acc[nm] = { name:nm, qty:0, color: hx||undefined };
+          acc[nm].qty += q; if(hx) acc[nm].color = hx; // latest color wins
+        }
+        const parsedPrizes = Object.values(acc).filter(p=>p.qty>0);
+        if(parsedPrizes.length===0){
+          alert('Tidak ada hadiah valid pada textarea (qty harus > 0). Data hadiah lama dipertahankan.');
+        } else {
+          prizes = parsedPrizes;
+          remainingPrizes = JSON.parse(JSON.stringify(prizes));
+          colorMap = {}; for(const p of prizes){ if(p.color) colorMap[p.name]=p.color; }
+          prizesChanged = true;
+        }
+      }
+
+      // ===== Jika keduanya kosong dan belum ada data, isi default demo =====
+      if(!ptext && !htext && participants.length===0 && prizes.length===0){
+        participants = [
+          {npk:'1001', name:'Budi Santoso', dept:'Finance'},
+          {npk:'1002', name:'Siti Aminah', dept:'HR'},
+          {npk:'1003', name:'Dewi Lestari', dept:'IT'},
+          {npk:'1004', name:'Rudi Hartono', dept:'Marketing'},
+          {npk:'1005', name:'Intan Pratiwi', dept:'GA'}
+        ];
+        prizes = [
+          {name:'Motor', qty:1, color:'#D81B60'},
+          {name:'Kulkas', qty:1, color:'#1E88E5'},
+          {name:'Rumah', qty:2, color:'#43A047'},
+          {name:'TV', qty:5, color:'#FB8C00'},
+          {name:'Lemari', qty:1, color:'#8E24AA'}
+        ];
+        remainingPrizes = JSON.parse(JSON.stringify(prizes));
+        colorMap = {}; for(const p of prizes){ if(p.color) colorMap[p.name]=p.color; }
+        participantsChanged = true; prizesChanged = true;
+      }
+
+      // ===== Jika tidak ada perubahan, kembalikan state lama =====
+      if(!participantsChanged && !prizesChanged){
+        participants = prevParticipants; prizes = prevPrizes; remainingPrizes = prevRemaining; colorMap = prevColorMap;
+      }
+
+      // Reset runtime hanya bila ada perubahan data inti
+      if(participantsChanged || prizesChanged){
+        winnersLog = []; lastAction = null; angle = 0;
+      }
+
+      updateAllUI(); saveLS();
+
+      // Validasi akhir agar SPIN aktif bila data sudah lengkap
+      if(remainingParticipants().length===0 || totalQty()===0){
+        document.getElementById('btnSpin').disabled = true;
+      } else {
+        document.getElementById('btnSpin').disabled = false;
+        setStatus('Siap');
+      }
+    }
 
       // Hadiah: Nama,Qty,Hex?
       const htext = document.getElementById('taHadiah').value.trim(); const linesH = htext.split(/\r?\n/).filter(Boolean);
