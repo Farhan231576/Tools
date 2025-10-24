@@ -1,494 +1,508 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id" data-bs-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Undian Spin Wheel</title>
-  <!-- Bootstrap 5.3 -->
+  <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    :root { --accent: #6f6cfb; --accent-2:#22c55e; }
-    body { background: var(--bs-body-bg); }
-    .app-title { letter-spacing:.3px; }
-    .wheel-wrap { position:relative; display:grid; place-items:center; }
-    canvas#wheel { width: 420px; height: 420px; max-width: 80vw; max-height: 80vw; }
-    .center-pin {
-      position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+    :root{
+      --brand: #4f46e5; /* indigo */
+      --bg-soft: #f8fafc;
+      --card-radius: 16px;
     }
-    .center-pin .arrow {
-      width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent;
-      border-bottom: 26px solid var(--accent); filter: drop-shadow(0 2px 3px rgba(0,0,0,.25));
-      transform: translateY(-6px);
+    body{background: var(--bg-soft);}    
+    .app{max-width: 1200px; margin: 24px auto;}
+    .card{border: 1px solid rgba(0,0,0,.06); border-radius: var(--card-radius);} 
+    .card .card-header{border-bottom: 1px solid rgba(0,0,0,.06)}
+    .btn-brand{background: var(--brand); border-color: var(--brand);} 
+    .btn-brand:hover{filter: brightness(.95)}
+
+    /* Wheel layout */
+    .wheel-wrap{ position: relative; width: 520px; max-width: 100%; aspect-ratio: 1/1; margin-inline: auto; }
+    canvas#wheel{ width: 100%; height: 100%; display: block; }
+    /* Top pointer (panah) fixed di atas lingkaran */
+    .pointer{ position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 18px solid transparent; border-right: 18px solid transparent; border-top: 0; border-bottom: 28px solid var(--brand); filter: drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+    /* Panah kecil di tengah bulatan (permintaan khusus) */
+    .center-arrow{ position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 14px solid var(--brand); }
+    .wheel-btns{ display:flex; gap: 10px; justify-content:center; flex-wrap: wrap; }
+
+    /* Winner overlay */
+    .winner-overlay{ position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(2px); display:none; align-items:center; justify-content:center; z-index: 50; }
+    .winner-card{ background: var(--bs-body-bg); color: var(--bs-body-color); border-radius: 18px; box-shadow: 0 16px 48px rgba(0,0,0,.3); padding: 22px; width: min(720px, 92vw); max-height: 80vh; overflow:auto; border:1px solid rgba(255,255,255,.1)}
+    .winner-title{ font-weight: 800; letter-spacing:.2px; }
+
+    /* Confetti canvas */
+    #confetti{ position: fixed; inset: 0; pointer-events: none; z-index: 60; display:none; }
+
+    /* Controls tidy */
+    .grid{ display:grid; gap: 16px; }
+    @media(min-width: 992px){
+      .grid-cols{ grid-template-columns: 380px 1fr; }
     }
-    .center-pin .hub { width:46px; height:46px; border-radius:50%; background:#fff; border:4px solid var(--accent);
-      position:absolute; display:grid; place-items:center; font-weight:800; font-size:.8rem; color:var(--accent) }
-    .wheel-shadow { filter: drop-shadow(0 8px 22px rgba(0,0,0,.2)); }
-    .controls .form-label small { opacity:.8 }
-    .badge-qty { font-variant-numeric: tabular-nums; }
-    .winner-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.55);
-      display: none; align-items: center; justify-content: center; z-index: 1100;
-    }
-    .winner-card { max-width: 640px; }
-    .legend-swatch { width: .9rem; height: .9rem; display:inline-block; border-radius:3px; margin-right:.4rem; border:1px solid rgba(0,0,0,.15)}
-    .btn-accent { background: var(--accent); color:#fff; border:0 }
-    .btn-accent:hover { filter: brightness(0.95) }
-    .spin-btn { font-weight:700; text-transform:uppercase; letter-spacing:.6px }
-    .list-group-item small { opacity:.8 }
+    textarea.form-control{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.9rem; }
+
+    .badge-dot{ display:inline-flex; align-items:center; gap:6px; }
+    .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; }
   </style>
 </head>
 <body>
-  <div class="container py-4 py-md-5">
-    <div class="d-flex align-items-center justify-content-between mb-4">
-      <h1 class="h3 app-title mb-0">🎯 Undian Spin Wheel</h1>
+  <div class="app">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="h4 m-0">🎯 Undian Spin Wheel</h1>
       <div class="d-flex align-items-center gap-2">
-        <button id="toggleTheme" class="btn btn-outline-secondary btn-sm" type="button" title="Light/Dark">
-          <span class="d-none d-sm-inline">Mode</span> <span class="ms-1" id="themeIcon">🌙</span>
-        </button>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" role="switch" id="modeSwitch">
+          <label class="form-check-label" for="modeSwitch">Light / Dark</label>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" id="btnSample">Isi Contoh</button>
       </div>
     </div>
 
-    <div class="row g-4">
-      <!-- Left: Inputs -->
-      <div class="col-lg-4">
-        <div class="card shadow-sm">
-          <div class="card-body controls">
-            <h5 class="card-title">Data Peserta</h5>
-            <p class="text-secondary small mb-2">Tempel (copy–paste) satu nama per baris.</p>
-            <textarea id="taPeserta" class="form-control mb-3" rows="6" placeholder="cth:
-Andi
-Budi
-Clara
-…"></textarea>
-
-            <h5 class="card-title mt-3">Data Hadiah</h5>
-            <p class="text-secondary small mb-2">Satu baris per hadiah. Bisa pakai format "Nama xQty" atau "Nama,Qty". Contoh di bawah.</p>
-            <textarea id="taHadiah" class="form-control" rows="6" placeholder="cth:
-Motor x1
-Kulkas x1
-Rumah x2
-TV x5
-Lemari x1"></textarea>
-
-            <div class="d-grid gap-2 mt-3">
-              <button class="btn btn-accent" id="btnLoad">Muat Daftar</button>
-              <button class="btn btn-outline-danger" id="btnReset">Reset</button>
+    <div class="grid grid-cols">
+      <!-- Controls -->
+      <div class="card">
+        <div class="card-header py-2"><strong>📋 Data & Pengaturan</strong></div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Peserta (Excel <em>atau</em> Tempel Teks)</label>
+            <div class="d-flex gap-2 flex-wrap mb-2">
+              <input type="file" id="filePeserta" accept=".xlsx,.xls" class="form-control" style="max-width:280px">
+              <button class="btn btn-outline-primary btn-sm" id="downloadTemplate">Unduh Template Excel</button>
             </div>
+            <textarea class="form-control" id="taPeserta" rows="6" placeholder="NPK, Nama, Department\n1001, Andi, Finance\n1002, Budi, Sales"></textarea>
+            <div class="form-text">Kolom wajib: <b>NPK, Nama, Department</b>. Pakai koma sebagai pemisah kolom.</div>
+          </div>
 
-            <hr class="my-4">
+          <div class="mb-3">
+            <label class="form-label">Hadiah (bisa tempel teks)</label>
+            <textarea class="form-control" id="taHadiah" rows="5" placeholder="Nama Hadiah | Jumlah\nMotor | 1\nKulkas | 1\nRumah | 2\nTV | 5\nLemari | 1"></textarea>
+            <div class="form-text">Setiap baris: <b>Nama | Jumlah</b>. Di roda, yang tampil hanya <em>nama unik</em> agar tidak penuh.
+            Pengacakan mempertimbangkan <em>jumlah tersisa</em> tiap hadiah.</div>
+          </div>
 
-            <label class="form-label">Peserta yang diundi <small>(otomatis hilang setelah menang)</small></label>
-            <div class="input-group mb-3">
-              <select id="selPeserta" class="form-select"></select>
-              <button class="btn btn-outline-secondary" id="btnRandPeserta" type="button">Acak</button>
-            </div>
+          <div class="mb-3">
+            <label for="speed" class="form-label">Kecepatan Putar</label>
+            <input type="range" class="form-range" min="1" max="10" value="7" id="speed">
+            <div class="small text-muted">Semakin tinggi semakin cepat & momentum lebih panjang.</div>
+          </div>
 
-            <div class="row g-3">
-              <div class="col-6">
-                <label for="speed" class="form-label">Kecepatan <small>(deg/s)</small></label>
-                <input type="range" class="form-range" id="speed" min="500" max="2000" step="50" value="1200">
-              </div>
-              <div class="col-6">
-                <label for="duration" class="form-label">Durasi <small>(detik)</small></label>
-                <input type="range" class="form-range" id="duration" min="3" max="8" step="0.5" value="5">
-              </div>
-            </div>
+          <div class="d-grid gap-2">
+            <button class="btn btn-brand" id="applyData">Terapkan Data</button>
+            <button class="btn btn-outline-secondary" id="resetAll">Reset Semua</button>
+          </div>
 
-            <div class="d-grid mt-3">
-              <button class="btn btn-accent spin-btn" id="btnSpin">SPIN</button>
-            </div>
+          <hr>
+          <div>
+            <div class="mb-2"><strong>Status:</strong></div>
+            <div id="status" class="small">Belum ada data.</div>
           </div>
         </div>
-
-        <div class="card shadow-sm mt-4">
-          <div class="card-body">
-            <h5 class="card-title mb-3">Legenda Hadiah</h5>
-            <ul id="legend" class="list-group list-group-flush"></ul>
-          </div>
-        </div>
-
       </div>
 
-      <!-- Right: Wheel & Winners -->
-      <div class="col-lg-8">
-        <div class="card shadow-sm mb-4">
-          <div class="card-body">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-              <h5 class="card-title mb-0">Roda Undian</h5>
-              <span class="badge text-bg-secondary" id="statusBadge">Siap</span>
-            </div>
-            <div class="wheel-wrap">
-              <canvas id="wheel" width="720" height="720" class="wheel-shadow" aria-label="Spin wheel"></canvas>
-              <div class="center-pin" aria-hidden="true">
-                <div class="hub">↑</div>
-                <div class="arrow"></div>
-              </div>
-            </div>
+      <!-- Wheel + Winners -->
+      <div class="card">
+        <div class="card-header py-2 d-flex align-items-center justify-content-between">
+          <strong>🛞 Roda Undian</strong>
+          <div class="small" id="legend"></div>
+        </div>
+        <div class="card-body">
+          <div class="wheel-wrap mb-3">
+            <div class="pointer"></div>
+            <canvas id="wheel" width="1000" height="1000"></canvas>
+            <div class="center-arrow"></div>
+          </div>
+          <div class="wheel-btns mb-3">
+            <button class="btn btn-success" id="btnSpin">SPIN</button>
+            <button class="btn btn-outline-primary" id="btnExport">Export Pemenang (Excel)</button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="tblWinners">
+              <thead>
+                <tr><th>#</th><th>Hadiah</th><th>NPK</th><th>Nama</th><th>Department</th><th>Waktu</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
           </div>
         </div>
-
-        <div class="row g-4">
-          <div class="col-md-6">
-            <div class="card shadow-sm h-100">
-              <div class="card-body">
-                <h5 class="card-title mb-3">Riwayat Pemenang</h5>
-                <ul id="winners" class="list-group list-group-flush"></ul>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="card shadow-sm h-100">
-              <div class="card-body">
-                <h5 class="card-title mb-3">Sisa Kuota Hadiah</h5>
-                <ul id="quota" class="list-group list-group-flush"></ul>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
 
   <!-- Winner Overlay -->
   <div class="winner-overlay" id="winnerOverlay">
-    <div class="card winner-card text-center">
-      <div class="card-body p-4 p-md-5">
-        <div class="display-6 mb-2">🎉 SELAMAT! 🎉</div>
-        <div class="fs-4">Pemenang:</div>
-        <div class="fw-bold h2 my-2" id="ovName">—</div>
-        <div class="fs-5">Hadiah:</div>
-        <div class="fw-bold h3 my-2" id="ovPrize">—</div>
-        <button class="btn btn-accent mt-3" id="btnCloseOverlay">Tutup</button>
+    <div class="winner-card">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div class="winner-title h4 m-0">🎉 Selamat kepada pemenang!</div>
+        <button class="btn btn-sm btn-outline-secondary" id="closeOverlay">Tutup</button>
       </div>
+      <div id="winnerList"></div>
     </div>
   </div>
+  <canvas id="confetti"></canvas>
 
-  <!-- Bootstrap & libs -->
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.0/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
-    // ======== State ========
-    const palette = [
-      '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#f97316', '#14b8a6', '#22c55e', '#eab308', '#06b6d4',
-      '#fb7185', '#60a5fa', '#34d399', '#f472b6', '#a3e635', '#93c5fd', '#facc15', '#84cc16', '#f43f5e', '#6366f1'
-    ];
+  // ======== Theme Toggle ========
+  const modeSwitch = document.getElementById('modeSwitch');
+  const rootHTML = document.documentElement;
+  modeSwitch.addEventListener('change', () => {
+    const theme = modeSwitch.checked ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-bs-theme', theme);
+  });
 
-    let prizes = []; // [{name, qty}]
-    let remaining = []; // deep copy of prizes with remaining qty
-    let participants = []; // unique names
-    let remainingParticipants = [];
-    let colorMap = {}; // name -> color
+  // ======== State ========
+  let participants = []; // {npk, nama, dept, won?:bool}
+  let prizes = [];       // [{name, qty}]
+  let prizeMap = new Map(); // name-> {qty}
+  let colorMap = new Map(); // name->color
+  let winners = [];      // rows for table
 
-    // Wheel state
-    const canvas = document.getElementById('wheel');
-    const ctx = canvas.getContext('2d');
-    let angle = 0; // current rotation in radians
-    let spinning = false;
+  const wheel = document.getElementById('wheel');
+  const ctx = wheel.getContext('2d');
+  const statusEl = document.getElementById('status');
+  const legendEl = document.getElementById('legend');
 
-    // ======== Helpers ========
-    const hash = (s) => s.split('').reduce((a,c)=>((a<<5)-a + c.charCodeAt(0))|0,0) >>> 0;
-    function colorFor(name){
-      if(colorMap[name]) return colorMap[name];
-      const h = hash(name);
-      const col = palette[h % palette.length];
-      return colorMap[name] = col;
-    }
-
-    function parseParticipants(text){
-      return [...new Set(text.split(/\n|,|;|\t/g).map(s=>s.trim()).filter(Boolean))];
-    }
-
-    function parsePrizes(text){
-      const lines = text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
-      const acc = {};
-      for(const line of lines){
-        // accept: "Nama x2" or "Nama,2" or "Nama 2"
-        const m1 = line.match(/^(.+?)[\s,]*x?\s*(\d+)$/i);
-        const name = m1 ? m1[1].trim() : line;
-        const qty = m1 ? Math.max(1, parseInt(m1[2],10)) : 1;
-        acc[name] = (acc[name]||0) + qty;
+  // ======== Helpers ========
+  function parseParticipantsText(text){
+    const rows = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+    const out = [];
+    for(const r of rows){
+      const cols = r.split(',').map(c=>c.trim());
+      if(cols.length >= 3){
+        out.push({npk: cols[0], nama: cols[1], dept: cols[2], won:false});
       }
-      return Object.entries(acc).map(([name, qty])=>({name, qty}));
     }
-
-    function totalQty(){ return remaining.reduce((t,p)=>t+p.qty,0); }
-
-    function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
-
-    function rad(deg){ return deg * Math.PI / 180; }
-
-    function drawWheel(){
-      const w = canvas.width, h = canvas.height; const r = Math.min(w,h)/2 - 10;
-      ctx.clearRect(0,0,w,h);
-      ctx.save();
-      ctx.translate(w/2, h/2);
-      ctx.rotate(angle);
-
-      const total = Math.max(1, totalQty());
-      let start = -Math.PI/2; // start from top
-
-      for(const p of remaining){
-        const frac = p.qty / total; // proportional to remaining qty
-        const arc = frac * Math.PI * 2;
-        // slice
-        ctx.beginPath();
-        ctx.moveTo(0,0);
-        ctx.arc(0,0,r, start, start+arc);
-        ctx.closePath();
-        ctx.fillStyle = colorFor(p.name);
-        ctx.fill();
-        // stroke ring to separate
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgba(0,0,0,.15)';
-        ctx.stroke();
-        // text label (only once)
-        ctx.save();
-        const mid = start + arc/2;
-        ctx.rotate(mid);
-        ctx.translate(r*0.68, 0);
-        ctx.rotate(Math.PI/2);
-        ctx.fillStyle = '#fff';
-        ctx.font = '700 24px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const label = p.name.toUpperCase();
-        // text shadow for readability
-        ctx.shadowColor = 'rgba(0,0,0,.25)';
-        ctx.shadowBlur = 4; ctx.shadowOffsetY = 2;
-        ctx.fillText(label, 0, 0, r*0.9);
-        ctx.restore();
-
-        p._start = start; p._end = start + arc; // store for hit-test
-        start += arc;
+    return out;
+  }
+  function parsePrizesText(text){
+    const rows = text.split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+    const out = [];
+    for(const r of rows){
+      const [name, qtyStr] = r.split('|').map(x=>x?.trim());
+      if(name && qtyStr){
+        const qty = Math.max(0, parseInt(qtyStr,10)||0);
+        if(qty>0) out.push({name, qty});
       }
+    }
+    return out;
+  }
+  function seedColorFor(str){
+    // stable color per prize using hash -> HSL palette
+    let h=0; for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i))>>>0; }
+    const hue = h % 360;
+    return `hsl(${hue}, 70%, 55%)`;
+  }
+  function buildMaps(){
+    prizeMap.clear(); colorMap.clear();
+    for(const p of prizes){
+      prizeMap.set(p.name, {qty:p.qty});
+      if(!colorMap.has(p.name)) colorMap.set(p.name, seedColorFor(p.name));
+    }
+  }
+  function distinctPrizeNames(){
+    return [...new Set(prizes.map(p=>p.name))];
+  }
+  function totalRemainingUnits(){
+    let t=0; for(const [n, obj] of prizeMap){ t += obj.qty; } return t;
+  }
+  function remainingPrizeEntries(){
+    return [...prizeMap].filter(([_,v])=>v.qty>0);
+  }
 
-      // outer rim
+  // ======== Wheel Drawing (Canvas) ========
+  let rotation = 0; // radians
+  function drawWheel(){
+    const names = distinctPrizeNames();
+    const N = names.length || 1;
+    const cx = wheel.width/2, cy = wheel.height/2; const r = wheel.width/2 - 10;
+    ctx.clearRect(0,0,wheel.width,wheel.height);
+
+    const arc = 2*Math.PI / N;
+    for(let i=0;i<N;i++){
+      const name = names[i];
+      const color = colorMap.get(name) || '#999';
+      const start = rotation + i*arc;
+      const end = start + arc;
+      // slice
       ctx.beginPath();
-      ctx.arc(0,0,r+6,0,Math.PI*2);
-      ctx.lineWidth = 12; ctx.strokeStyle = '#fff';
-      ctx.stroke();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,start,end);
+      ctx.closePath();
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 4; ctx.stroke();
 
+      // label
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(start + arc/2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 34px system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans';
+      ctx.fillText(name, r-20, 10);
       ctx.restore();
     }
 
-    function rebuildLegend(){
-      const ul = document.getElementById('legend');
-      ul.innerHTML = '';
-      for(const p of remaining){
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
-        li.innerHTML = `<span><i class="legend-swatch" style="background:${colorFor(p.name)}"></i>${p.name}</span>`+
-          `<span class="badge text-bg-light badge-qty">x${p.qty}</span>`;
-        ul.appendChild(li);
-      }
+    // center circle
+    ctx.beginPath();
+    ctx.arc(cx,cy,70,0,2*Math.PI);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-bg') || '#fff';
+    ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.stroke();
+
+    // center text
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-color') || '#000';
+    ctx.font = '600 18px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('SPIN', cx, cy+6);
+  }
+
+  // Legend
+  function renderLegend(){
+    legendEl.innerHTML = distinctPrizeNames().map(n=>{
+      const c = colorMap.get(n)||'#999';
+      return `<span class="badge-dot me-2"><span class="dot" style="background:${c}"></span>${n} <small class="text-muted">(sisa ${prizeMap.get(n)?.qty||0})</small></span>`;
+    }).join('');
+  }
+
+  // ======== Spin Logic ========
+  let spinning=false, animId=null; 
+  let targetPrizeName=null, targetAngle=null; 
+  function choosePrizeWeighted(){
+    const entries = remainingPrizeEntries();
+    const total = entries.reduce((a,[,v])=>a+v.qty,0);
+    let rnd = Math.random()*total;
+    for(const [name, v] of entries){
+      if(rnd < v.qty) return name; rnd -= v.qty;
     }
+    return entries[0]?.[0] || null;
+  }
+  function computeTargetAngleForPrize(name){
+    const names = distinctPrizeNames();
+    const idx = names.indexOf(name); if(idx<0) return rotation; 
+    const arc = 2*Math.PI / names.length;
+    const sliceCenter = idx*arc + arc/2;
+    // pointer is at angle -Math.PI/2 (top). We want rotation so that sliceCenter aligns to that.
+    // We rotate canvas, so visible pointer fixed at top; need target rotation so (sliceCenter + rotation) aligns to -PI/2
+    const desired = -Math.PI/2 - (sliceCenter);
+    return desired;
+  }
+  function spin(){
+    if(spinning) return; 
+    if(totalRemainingUnits()===0){ alert('Semua hadiah sudah habis.'); return; }
+    const available = participants.filter(p=>!p.won);
+    if(available.length===0){ alert('Semua peserta sudah menang.'); return; }
 
-    function rebuildQuota(){
-      const ul = document.getElementById('quota');
-      ul.innerHTML = '';
-      for(const p of remaining){
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
-        li.innerHTML = `<span>${p.name}</span><span class="badge text-bg-secondary">Sisa: ${p.qty}</span>`;
-        ul.appendChild(li);
-      }
-    }
+    const prizeName = choosePrizeWeighted();
+    targetPrizeName = prizeName;
+    targetAngle = computeTargetAngleForPrize(prizeName);
 
-    function rebuildParticipantsSelect(){
-      const sel = document.getElementById('selPeserta');
-      sel.innerHTML = '';
-      for(const n of remainingParticipants){
-        const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt);
-      }
-    }
+    const speedVal = +document.getElementById('speed').value; // 1..10
+    const spinTime = 2000 + speedVal*250; // duration accelerate
+    const extraRot = (4 + Math.floor(speedVal/2)) * 2*Math.PI; // extra turns
 
-    function setStatus(t){ document.getElementById('statusBadge').textContent = t; }
+    const start = performance.now();
+    const startRot = rotation;
+    const deltaToTarget = normalizeAngle(targetAngle - startRot);
 
-    function confettiBurst(){
-      const duration = 1600;
-      const end = Date.now() + duration;
-      (function frame(){
-        confetti({ particleCount: 4, spread: 70, origin: { y: 0.6 } });
-        if(Date.now() < end) requestAnimationFrame(frame);
-      })();
-    }
+    const endRot = startRot + extraRot + deltaToTarget; // overspin + land exactly
 
-    function pickPrizeWeighted(){
-      const total = totalQty(); if(total<=0) return null;
-      let r = Math.random() * total;
-      for(const p of remaining){
-        if(r < p.qty) return p;
-        r -= p.qty;
-      }
-      return remaining.at(-1) || null;
-    }
-
-    function findSegmentAngles(prize){
-      // Find stored angles (after drawWheel sets _start/_end)
-      for(const p of remaining){
-        if(p.name === prize.name){ return {start:p._start, end:p._end}; }
-      }
-      return {start:-Math.PI/2, end:-Math.PI/2};
-    }
-
-    function spinToPrize(prize){
-      if(spinning) return;
-      const speed = parseFloat(document.getElementById('speed').value); // deg/s
-      const duration = parseFloat(document.getElementById('duration').value); // s
-      const minRot = rad(speed * duration); // total radians to rotate baseline
-
-      const seg = findSegmentAngles(prize);
-      // target is arrow up (top), wheel rotates so that segment's mid aligns to top
-      const mid = (seg.start + seg.end)/2;
-      // we want angle_end such that (current angle + spin) % TAU makes mid end at -PI/2
-      const TAU = Math.PI*2;
-      let targetAngle = angle + minRot; // baseline spin forward
-      // compute delta required to land mid at top: topAngle = -PI/2
-      const alignDelta = (-Math.PI/2) - mid;
-      targetAngle += alignDelta;
-      // add a few extra full turns for flair
-      const extraTurns = 2 + Math.floor(Math.random()*2); // 2-3 extra turns
-      targetAngle += extraTurns * TAU;
-
-      // animation
-      const startTime = performance.now();
-      const startAngle = angle;
-      const totalDelta = targetAngle - startAngle;
-      spinning = true; setStatus('Berputar…');
-
-      function tick(now){
-        const t = Math.min(1, (now - startTime) / (duration*1000));
-        const eased = easeOutCubic(t);
-        angle = startAngle + totalDelta * eased;
-        drawWheel();
-        if(t < 1) {
-          requestAnimationFrame(tick);
-        } else {
-          spinning = false; angle = angle % (Math.PI*2);
-          setStatus('Selesai');
-          onSpinEnd(prize);
-        }
-      }
-      requestAnimationFrame(tick);
-    }
-
-    function onSpinEnd(prize){
-      // Reveal winner
-      const sel = document.getElementById('selPeserta');
-      const name = sel.value || remainingParticipants[0];
-      if(!name){ alert('Masukkan peserta terlebih dahulu.'); return; }
-
-      // Update quotas and participants
-      const p = remaining.find(x=>x.name===prize.name);
-      if(p){ p.qty--; if(p.qty<=0){ remaining = remaining.filter(x=>x.qty>0); } }
-      remainingParticipants = remainingParticipants.filter(n=>n!==name);
-
-      // UI rebuild
-      rebuildLegend();
-      rebuildQuota();
-      rebuildParticipantsSelect();
+    spinning = true;
+    function easeOutCubic(t){return 1 - Math.pow(1 - t, 3);}
+    function frame(ts){
+      const t = Math.min(1, (ts - start)/(spinTime + speedVal*500));
+      const eased = easeOutCubic(t);
+      rotation = startRot + (endRot - startRot)*eased;
       drawWheel();
-
-      // Winners list
-      const li = document.createElement('li');
-      li.className = 'list-group-item d-flex justify-content-between align-items-center';
-      li.innerHTML = `<span><strong>${name}</strong></span><span class="badge text-bg-success">${prize.name}</span>`;
-      document.getElementById('winners').prepend(li);
-
-      // Overlay + Confetti
-      document.getElementById('ovName').textContent = name;
-      document.getElementById('ovPrize').textContent = prize.name;
-      document.getElementById('winnerOverlay').style.display = 'flex';
-      confettiBurst();
-
-      // Auto-close overlay after a bit (optional)
-      setTimeout(()=>{ document.getElementById('winnerOverlay').style.display='none'; }, 4000);
-
-      // If no participants or no prizes left -> disable spin
-      if(remainingParticipants.length===0 || totalQty()===0){
-        document.getElementById('btnSpin').disabled = true;
-        setStatus('Undian selesai');
-      }
+      if(t < 1){ animId = requestAnimationFrame(frame); }
+      else { spinning=false; onSpinEnd(); }
     }
+    animId = requestAnimationFrame(frame);
+  }
+  function normalizeAngle(a){
+    while(a>Math.PI) a-=2*Math.PI; while(a<-Math.PI) a+=2*Math.PI; return a;
+  }
 
-    // ======== Event wiring ========
-    document.getElementById('btnLoad').addEventListener('click', ()=>{
-      const ptext = document.getElementById('taPeserta').value.trim();
-      const htext = document.getElementById('taHadiah').value.trim();
-      participants = parseParticipants(ptext);
-      remainingParticipants = participants.slice();
-      prizes = parsePrizes(htext);
-      remaining = JSON.parse(JSON.stringify(prizes));
+  function onSpinEnd(){
+    if(!targetPrizeName) return;
+    const remainQty = prizeMap.get(targetPrizeName)?.qty || 0;
+    if(remainQty<=0){ renderLegend(); return; }
 
-      if(remainingParticipants.length===0){
-        // quick default if empty, as per example in prompt
-        remainingParticipants = ['Peserta 1','Peserta 2','Peserta 3','Peserta 4','Peserta 5','Peserta 6','Peserta 7','Peserta 8','Peserta 9','Peserta 10'];
+    // Number of winners = remaining qty of the selected prize, bounded by available participants
+    const available = participants.filter(p=>!p.won);
+    const k = Math.min(remainQty, available.length);
+    const selected = pickK(available, k);
+
+    // Mark winners and reduce prize qty to 0 (given per requirement: berhenti di TV 7x -> keluar 7 nama langsung)
+    for(const w of selected){ w.won = true; }
+    prizeMap.get(targetPrizeName).qty -= k; // potentially 0
+
+    // Add to table & overlay
+    pushWinners(targetPrizeName, selected);
+    renderLegend();
+    launchConfetti();
+    showOverlay(targetPrizeName, selected);
+
+    // If all prizes done -> notify
+    if(totalRemainingUnits()===0){ setStatus('🎁 Semua hadiah telah dibagikan.'); }
+    else setStatus(`Hadiah "${targetPrizeName}" dibagikan sebanyak ${k}. Sisa total hadiah: ${totalRemainingUnits()}.`);
+  }
+  function pickK(arr, k){
+    const copy = arr.slice();
+    for(let i=copy.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [copy[i],copy[j]]=[copy[j],copy[i]]; }
+    return copy.slice(0,k);
+  }
+
+  // ======== Winners Table & Overlay ========
+  const winnersTbody = document.querySelector('#tblWinners tbody');
+  function pushWinners(prizeName, persons){
+    const now = new Date();
+    for(const p of persons){
+      winners.push({prize: prizeName, ...p, time: now.toLocaleString()});
+    }
+    rebuildWinnersTable();
+  }
+  function rebuildWinnersTable(){
+    winnersTbody.innerHTML = winners.map((w, i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td>${escapeHtml(w.prize)}</td>
+        <td>${escapeHtml(w.npk)}</td>
+        <td>${escapeHtml(w.nama)}</td>
+        <td>${escapeHtml(w.dept)}</td>
+        <td>${escapeHtml(w.time)}</td>
+      </tr>`).join('');
+  }
+  function showOverlay(prizeName, persons){
+    const overlay = document.getElementById('winnerOverlay');
+    const list = document.getElementById('winnerList');
+    list.innerHTML = `
+      <div class="mb-2"><span class="badge bg-success">${escapeHtml(prizeName)}</span> × ${persons.length}</div>
+      <div class="table-responsive"><table class="table table-sm">
+        <thead><tr><th>#</th><th>NPK</th><th>Nama</th><th>Department</th></tr></thead>
+        <tbody>${persons.map((p,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(p.npk)}</td><td>${escapeHtml(p.nama)}</td><td>${escapeHtml(p.dept)}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    overlay.style.display = 'flex';
+  }
+  document.getElementById('closeOverlay').onclick = ()=>{
+    document.getElementById('winnerOverlay').style.display = 'none';
+  };
+
+  // ======== Confetti ========
+  const confettiCanvas = document.getElementById('confetti');
+  const cctx = confettiCanvas.getContext('2d');
+  function launchConfetti(){
+    confettiCanvas.width = innerWidth; confettiCanvas.height = innerHeight; confettiCanvas.style.display='block';
+    const pieces = Array.from({length: 180}, ()=>({
+      x: Math.random()*innerWidth,
+      y: -20 - Math.random()*innerHeight*0.4,
+      w: 6 + Math.random()*6,
+      h: 10 + Math.random()*12,
+      rot: Math.random()*Math.PI,
+      velY: 2 + Math.random()*4,
+      velX: -2 + Math.random()*4,
+      color: `hsl(${Math.floor(Math.random()*360)}, 90%, 60%)`
+    }));
+    const start = performance.now();
+    function frame(ts){
+      const t = (ts-start)/1000;
+      cctx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height);
+      for(const p of pieces){
+        p.x += p.velX; p.y += p.velY; p.rot += 0.08;
+        cctx.save(); cctx.translate(p.x, p.y); cctx.rotate(p.rot);
+        cctx.fillStyle = p.color; cctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+        cctx.restore();
       }
-      if(remaining.length===0){
-        remaining = [ {name:'Motor',qty:1},{name:'Kulkas',qty:1},{name:'Rumah',qty:2},{name:'TV',qty:5},{name:'Lemari',qty:1} ];
-      }
+      if(t < 3){ requestAnimationFrame(frame); }
+      else { confettiCanvas.style.display='none'; }
+    }
+    requestAnimationFrame(frame);
+  }
 
-      rebuildParticipantsSelect();
-      rebuildLegend();
-      rebuildQuota();
-      drawWheel();
-      setStatus('Siap');
-      document.getElementById('btnSpin').disabled = false;
-    });
+  // ======== Excel Import/Export ========
+  document.getElementById('filePeserta').addEventListener('change', (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const rows = data.map(r=>`${r.NPK||r.npk||''}, ${r.Nama||r.nama||''}, ${r.Department||r.Dept||r.department||''}`)
+                       .filter(s=>s.replace(/[,\s]/g,'').length>0);
+      document.getElementById('taPeserta').value = rows.join('\n');
+      setStatus(`Terbaca ${rows.length} baris dari Excel.`);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+  document.getElementById('btnExport').addEventListener('click', ()=>{
+    if(!winners.length){ alert('Belum ada pemenang.'); return; }
+    const ws = XLSX.utils.json_to_sheet(winners.map((w,i)=>({
+      No: i+1,
+      Hadiah: w.prize,
+      NPK: w.npk,
+      Nama: w.nama,
+      Department: w.dept,
+      Waktu: w.time
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Pemenang');
 
-    document.getElementById('btnReset').addEventListener('click', ()=>{
-      participants = []; remainingParticipants = [];
-      prizes = []; remaining = [];
-      document.getElementById('taPeserta').value = '';
-      document.getElementById('taHadiah').value = '';
-      document.getElementById('legend').innerHTML = '';
-      document.getElementById('quota').innerHTML = '';
-      document.getElementById('winners').innerHTML = '';
-      document.getElementById('selPeserta').innerHTML = '';
-      angle = 0; drawWheel();
-      setStatus('Siap');
-      document.getElementById('btnSpin').disabled = true;
-    });
+    // Sheet 2: Sisa Hadiah
+    const remain = [...prizeMap].map(([name,obj])=>({Hadiah:name, Sisa: obj.qty}));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(remain), 'Sisa Hadiah');
 
-    document.getElementById('btnRandPeserta').addEventListener('click', ()=>{
-      if(remainingParticipants.length===0) return;
-      const i = Math.floor(Math.random()*remainingParticipants.length);
-      document.getElementById('selPeserta').value = remainingParticipants[i];
-    });
+    // Sheet 3: Sisa Peserta
+    const remainingPeople = participants.filter(p=>!p.won);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(remainingPeople.map(p=>({NPK:p.npk,Nama:p.nama,Department:p.dept}))), 'Sisa Peserta');
 
-    document.getElementById('btnSpin').addEventListener('click', ()=>{
-      if(spinning) return;
-      if(remainingParticipants.length===0){ alert('Peserta habis.'); return; }
-      if(totalQty()===0){ alert('Hadiah habis.'); return; }
-      // Weighted pick but wheel slice sizes also reflect qty, so any prize can be targeted to top
-      const prize = pickPrizeWeighted();
-      // redraw before computing angles to ensure _start/_end are up-to-date
-      drawWheel();
-      spinToPrize(prize);
-    });
+    XLSX.writeFile(wb, 'hasil-undian.xlsx');
+  });
+  document.getElementById('downloadTemplate').addEventListener('click', ()=>{
+    const ws = XLSX.utils.aoa_to_sheet([["NPK","Nama","Department"],["1001","Andi","Finance"],["1002","Budi","Sales"]]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Peserta Template');
+    XLSX.writeFile(wb, 'template-peserta.xlsx');
+  });
 
-    document.getElementById('btnCloseOverlay').addEventListener('click', ()=>{
-      document.getElementById('winnerOverlay').style.display = 'none';
-    });
+  // ======== Apply / Reset / Samples ========
+  document.getElementById('applyData').addEventListener('click', ()=>{
+    const pText = document.getElementById('taPeserta').value;
+    const hText = document.getElementById('taHadiah').value;
+    const p = parseParticipantsText(pText);
+    const h = parsePrizesText(hText);
+    if(!p.length || !h.length){
+      alert('Mohon isi Peserta dan Hadiah dengan benar.'); return;
+    }
+    participants = p; prizes = h; buildMaps();
+    drawWheel(); renderLegend();
+    setStatus(`Peserta: ${participants.length} | Total unit hadiah: ${totalRemainingUnits()} | Jenis hadiah: ${distinctPrizeNames().length}`);
+  });
+  document.getElementById('resetAll').addEventListener('click', ()=>{
+    if(spinning) return;
+    participants = participants.map(p=>({...p, won:false}));
+    prizes = prizes.map(p=>({...p})); buildMaps(); winners=[]; rebuildWinnersTable();
+    drawWheel(); renderLegend(); setStatus('Sudah di-reset.');
+  });
+  document.getElementById('btnSample').addEventListener('click', ()=>{
+    document.getElementById('taPeserta').value = `NPK, Nama, Department\n1001, Andi, Finance\n1002, Budi, Sales\n1003, Citra, HR\n1004, Dedi, IT\n1005, Evi, Marketing\n1006, Fajar, GA\n1007, Gita, QA\n1008, Hasan, Legal\n1009, Intan, RnD\n1010, Joko, Purchasing`;
+    document.getElementById('taHadiah').value = `Motor | 1\nKulkas | 1\nRumah | 2\nTV | 5\nLemari | 1`;
+  });
 
-    // Theme toggle
-    const themeBtn = document.getElementById('toggleTheme');
-    themeBtn.addEventListener('click', ()=>{
-      const html = document.documentElement;
-      const cur = html.getAttribute('data-bs-theme');
-      const next = cur === 'dark' ? 'light' : 'dark';
-      html.setAttribute('data-bs-theme', next);
-      document.getElementById('themeIcon').textContent = next==='dark' ? '🌞' : '🌙';
-      drawWheel();
-    });
+  // ======== Spin Button ========
+  document.getElementById('btnSpin').addEventListener('click', spin);
 
-    // Initial draw (empty wheel placeholder)
-    drawWheel();
+  // ======== Utilities ========
+  function setStatus(msg){ statusEl.textContent = msg; }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 
-    // ======== Prefill example to match prompt ========
-    document.getElementById('taPeserta').value = `Andi\nBudi\nCitra\nDewi\nEvan\nFajar\nGita\nHadi\nIntan\nJoko`;
-    document.getElementById('taHadiah').value = `Motor x1\nKulkas x1\nRumah x2\nTV x5\nLemari x1`;
+  // Init default wheel visuals
+  // Preload some default colors & wheel so user sees UI
+  prizes = [{name:'Motor',qty:1},{name:'Kulkas',qty:1},{name:'Rumah',qty:2},{name:'TV',qty:5},{name:'Lemari',qty:1}];
+  buildMaps(); drawWheel(); renderLegend();
+
   </script>
 </body>
 </html>
